@@ -1,0 +1,1067 @@
+<html data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMiAzMiI+PHJlY3Qgd2lkdGg9IjMyIiBoZWlnaHQ9IjMyIiByeD0iNyIgZmlsbD0iIzBkMTAxOCIvPjxwb2x5Z29uIHBvaW50cz0iMTksMyAxMSwxNiAxNywxNiAxMywyOSAyMywxNCAxNywxNCIgZmlsbD0iIzAwRDRGRiIvPjxyZWN0IHg9IjEwIiB5PSIyNCIgd2lkdGg9IjEyIiBoZWlnaHQ9IjIuNSIgcng9IjEuMjUiIGZpbGw9IiMwMEQ0RkYiIG9wYWNpdHk9IjAuNDUiLz48L3N2Zz4=">
+<title>JediMock Suite — API Mock Generator</title>
+<meta name="description" content="JediMock Suite: generate fetch/XHR mock scripts, validate and beautify JSON, and compare diffs — all in one tool.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚡</text></svg>">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+
+<body>
+
+<!-- ONBOARDING OVERLAY -->
+<div class="onboarding-overlay" id="onboardingOverlay" style="display:none">
+  <div class="onboarding-card">
+    <div class="onboarding-logo">
+      <svg width="36" height="36" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect width="32" height="32" rx="8" fill="#0d1018"/>
+        <polygon points="19,3 11,16 17,16 13,29 23,14 17,14" fill="var(--accent)"/><rect x="9" y="24" width="14" height="2.5" rx="1.25" fill="var(--accent)" opacity="0.45"/>
+      </svg>
+      <div>
+        <div style="font-size:18px;font-weight:700;color:var(--text)">Welcome to JediMock</div>
+        <div style="font-size:12px;color:var(--text-muted);margin-top:2px">Dev & QA Toolkit — mock APIs in seconds</div>
+      </div>
+    </div>
+    <div class="onboarding-steps">
+      <div class="onboarding-step">
+        <div class="onboarding-step-num">1</div>
+        <div class="onboarding-step-text">
+          <strong>Set the URL to intercept</strong><br>
+          <span>Enter part of the API URL — e.g. <code style="background:var(--surface2);padding:1px 5px;border-radius:3px;font-size:11px">/api/users</code> or use wildcards like <code style="background:var(--surface2);padding:1px 5px;border-radius:3px;font-size:11px">/api/users/*</code> for dynamic IDs.</span>
+        </div>
+      </div>
+      <div class="onboarding-step">
+        <div class="onboarding-step-num">2</div>
+        <div class="onboarding-step-text">
+          <strong>Paste your JSON response</strong><br>
+          <span>Open DevTools Network tab, find the API call you want to mock, copy the response JSON and paste it — then click Load JSON.</span>
+        </div>
+      </div>
+      <div class="onboarding-step">
+        <div class="onboarding-step-num">3</div>
+        <div class="onboarding-step-text">
+          <strong>Edit fields in the tree</strong><br>
+          <span>Click any value in the tree to edit it inline. Change whatever you need — status, names, flags, nested objects.</span>
+        </div>
+      </div>
+      <div class="onboarding-step">
+        <div class="onboarding-step-num">4</div>
+        <div class="onboarding-step-text">
+          <strong>Generate & paste the script</strong><br>
+          <span>Click Generate Script, copy it, then paste into your browser's DevTools console. Every matching request now returns your mock response automatically.</span>
+        </div>
+      </div>
+    </div>
+    <div class="onboarding-footer">
+      <button class="btn-primary" onclick="dismissOnboarding()" style="padding:10px 28px;font-size:14px">Get started →</button>
+    </div>
+  </div>
+</div>
+
+<!-- SHORTCUTS MODAL -->
+<div class="shortcuts-overlay" id="shortcutsOverlay" style="display:none" onclick="if(event.target===this)closeShortcuts()">
+  <div class="shortcuts-card">
+    <div class="shortcuts-header">
+      <span class="shortcuts-title">⌨ Keyboard Shortcuts</span>
+      <button class="shortcuts-close" onclick="closeShortcuts()">✕</button>
+    </div>
+    <div class="shortcuts-section">
+      <div class="shortcuts-section-title">Navigation</div>
+      <div class="shortcut-row"><span class="shortcut-label">Switch to Mock</span><span class="shortcut-keys"><span class="kbd">Ctrl</span><span class="kbd">1</span></span></div>
+      <div class="shortcut-row"><span class="shortcut-label">Switch to Editor</span><span class="shortcut-keys"><span class="kbd">Ctrl</span><span class="kbd">2</span></span></div>
+      <div class="shortcut-row"><span class="shortcut-label">Switch to Beautifier</span><span class="shortcut-keys"><span class="kbd">Ctrl</span><span class="kbd">3</span></span></div>
+      <div class="shortcut-row"><span class="shortcut-label">Switch to Diff</span><span class="shortcut-keys"><span class="kbd">Ctrl</span><span class="kbd">4</span></span></div>
+      <div class="shortcut-row"><span class="shortcut-label">Switch to Validator</span><span class="shortcut-keys"><span class="kbd">Ctrl</span><span class="kbd">5</span></span></div>
+    </div>
+    <div class="shortcuts-section">
+      <div class="shortcuts-section-title">Mock Tool</div>
+      <div class="shortcut-row"><span class="shortcut-label">New tab</span><span class="shortcut-keys"><span class="kbd">Ctrl</span><span class="kbd">T</span></span></div>
+      <div class="shortcut-row"><span class="shortcut-label">Generate script</span><span class="shortcut-keys"><span class="kbd">Ctrl</span><span class="kbd">Enter</span></span></div>
+      <div class="shortcut-row"><span class="shortcut-label">Import cURL</span><span class="shortcut-keys"><span class="kbd">Ctrl</span><span class="kbd">Shift</span><span class="kbd">V</span></span></div>
+    </div>
+    <div class="shortcuts-section">
+      <div class="shortcuts-section-title">Editor</div>
+      <div class="shortcut-row"><span class="shortcut-label">Search tree</span><span class="shortcut-keys"><span class="kbd">Ctrl</span><span class="kbd">F</span></span></div>
+      <div class="shortcut-row"><span class="shortcut-label">Expand all</span><span class="shortcut-keys"><span class="kbd">Ctrl</span><span class="kbd">Shift</span><span class="kbd">E</span></span></div>
+      <div class="shortcut-row"><span class="shortcut-label">Collapse all</span><span class="shortcut-keys"><span class="kbd">Ctrl</span><span class="kbd">Shift</span><span class="kbd">C</span></span></div>
+    </div>
+    <div class="shortcuts-section">
+      <div class="shortcuts-section-title">General</div>
+      <div class="shortcut-row"><span class="shortcut-label">Show shortcuts</span><span class="shortcut-keys"><span class="kbd">?</span></span></div>
+      <div class="shortcut-row"><span class="shortcut-label">Exit fullscreen</span><span class="shortcut-keys"><span class="kbd">Esc</span></span></div>
+    </div>
+  </div>
+</div>
+
+<button id="sidebarToggleTab" class="sidebar-toggle-tab" onclick="toggleSidebarOverlay()" title="Toggle sidebar">
+  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+    <polyline points="9 18 15 12 9 6"/>
+  </svg>
+</button>
+
+<div class="app">
+
+  <!-- ── SIDEBAR ── -->
+  <div class="sidebar">
+    <!-- Logo + collapse toggle -->
+    <div class="sidebar-logo">
+      <div class="sidebar-logo-mark">
+        <svg width="30" height="30" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect width="32" height="32" rx="8" fill="#0d1018"/>
+          <polygon points="19,3 11,16 17,16 13,29 23,14 17,14" fill="var(--accent)"/><rect x="9" y="24" width="14" height="2.5" rx="1.25" fill="var(--accent)" opacity="0.45"/>
+        </svg>
+      </div>
+      <div class="sidebar-logo-text">
+        <h1>JediMock</h1>
+        <span class="app-logo-sub">Dev & QA Toolkit</span>
+      </div>
+    </div>
+
+    <!-- Nav -->
+    <nav class="sidebar-nav">
+      <div class="sidebar-nav-label">Tools</div>
+
+      <button class="sidebar-nav-btn active" onclick="switchTool('mock')" id="nav-mock">
+        <span class="nav-icon">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+        </span>
+        <span class="sidebar-nav-btn-text">
+          Mock
+          <span class="sidebar-nav-btn-sub">Mock & intercept APIs</span>
+        </span>
+      </button>
+
+      <button class="sidebar-nav-btn" onclick="switchTool('editor')" id="nav-editor">
+        <span class="nav-icon">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+        </span>
+        <span class="sidebar-nav-btn-text">
+          Editor
+          <span class="sidebar-nav-btn-sub">Bulk JSON editing</span>
+        </span>
+      </button>
+
+      <button class="sidebar-nav-btn" onclick="switchTool('beautifier')" id="nav-beautifier">
+        <span class="nav-icon">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg>
+        </span>
+        <span class="sidebar-nav-btn-text">
+          Beautifier
+          <span class="sidebar-nav-btn-sub">Format & minify</span>
+        </span>
+      </button>
+
+      <button class="sidebar-nav-btn" onclick="switchTool('diff')" id="nav-diff">
+        <span class="nav-icon">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+        </span>
+        <span class="sidebar-nav-btn-text">
+          Diff
+          <span class="sidebar-nav-btn-sub">Compare text & JSON</span>
+        </span>
+      </button>
+
+      <button class="sidebar-nav-btn" onclick="switchTool('validator')" id="nav-validator">
+        <span class="nav-icon">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+        </span>
+        <span class="sidebar-nav-btn-text">
+          Validator
+          <span class="sidebar-nav-btn-sub">Lint & fix JSON</span>
+        </span>
+      </button>
+    </nav>
+
+    <!-- Footer actions — always visible, not tied to mockOnlyBtns -->
+    <div class="sidebar-footer">
+      <!-- hidden span keeps mockOnlyBtns in DOM for saveState/loadState logic -->
+      <span id="mockOnlyBtns" style="display:block" data-sidebar="1">
+        <label class="sidebar-footer-btn" style="cursor:pointer">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          Import config
+          <input type="file" accept=".json" onchange="importConfig(event)" style="display:none">
+        </label>
+        <button onclick="exportConfig()" class="sidebar-footer-btn">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Export config
+        </button>
+        <button onclick="shareTab()" id="shareBtn" class="sidebar-footer-btn">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+          Share tab
+        </button>
+      </span>
+      <button onclick="toggleTheme()" id="themeBtn" class="sidebar-footer-btn">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+        <span class="theme-label">Toggle theme</span>
+      </button>
+      <button onclick="showOnboarding()" class="sidebar-footer-btn" id="gettingStartedBtn" title="Show getting started guide">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        Getting started
+      </button>
+      <button onclick="showShortcuts()" class="sidebar-footer-btn" title="Keyboard shortcuts">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M8 12h.01M12 12h.01M16 12h.01M7 16h10"/></svg>
+        Shortcuts
+      </button>
+      <div id="clearSessionConfirm" style="display:none;padding:8px 10px;background:rgba(248,113,113,0.1);border:1px solid rgba(248,113,113,0.3);border-radius:6px;margin:2px 0">
+        <div style="font-size:11px;color:var(--red);margin-bottom:6px;font-weight:500">Clear all saved data?</div>
+        <div style="display:flex;gap:6px">
+          <button onclick="clearPersistedSession();location.reload();" style="flex:1;padding:4px 0;font-size:11px;background:var(--red);border:none;color:white;border-radius:4px;cursor:pointer;font-weight:600">Yes, clear</button>
+          <button onclick="document.getElementById('clearSessionConfirm').style.display='none'" style="flex:1;padding:4px 0;font-size:11px;background:var(--surface2);border:1px solid var(--border);color:var(--text-muted);border-radius:4px;cursor:pointer">Cancel</button>
+        </div>
+      </div>
+      <button onclick="document.getElementById('clearSessionConfirm').style.display='block'" class="sidebar-footer-btn sidebar-footer-btn-danger" title="Clear saved session and start fresh">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+        Clear session
+      </button>
+      <a href="./index.html" class="sidebar-footer-btn" title="Back to jedimock.com" style="text-decoration:none;border-top:1px solid var(--border);margin-top:4px;padding-top:10px;color:var(--text-dim)">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+        jedimock.com
+      </a>
+
+    </div>
+  </div>
+
+  <!-- ── MAIN CONTENT ── -->
+  <div class="main-content">
+    <div id="sidebarBackdrop" class="sidebar-backdrop" onclick="closeSidebar()"></div>
+
+
+
+
+  <!-- MOCK TOOL -->
+  <div class="tool-panel active" id="panel-mock">
+
+  <div class="tabs-wrapper">
+    <div id="tabs" class="tabs"></div>
+    <div class="tabs-footer">
+      <span class="tab-count" id="tabCount"></span>
+      <div class="tab-jump" id="tabJump" style="display:none">
+        <button class="tab-jump-btn" id="tabJumpBtn" onclick="toggleDropdown()">☰ Jump to tab <span id="tabJumpArrow">▲</span></button>
+        <div class="tab-dropdown hidden" id="tabDropdown"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODE -->
+  <div class="card" style="position:relative">
+    <button onclick="resetAll()" class="btn-ghost" style="position:absolute;top:10px;right:12px">↺ Reset</button>
+    <!-- hidden radios keep existing JS logic intact -->
+    <input type="radio" name="mode" value="fetch" id="modeFetch" checked onchange="onModeChange()" style="display:none">
+    <input type="radio" name="asyncMode" value="xhr" id="asyncXhr" onchange="onModeChange()" style="display:none">
+    <div style="display:inline-flex;gap:20px;align-items:start;flex-wrap:wrap">
+      <!-- Mode -->
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <span class="card-label" style="margin-bottom:0">Mode</span>
+        <div class="radio-pill" id="interceptPill">
+          <input type="radio" name="asyncMode" value="off" id="asyncOff" checked onchange="onModeChange()">
+          <label for="asyncOff">Intercept</label>
+          <input type="radio" name="asyncMode" value="fetch" id="asyncFetch" onchange="onModeChange()">
+          <label for="asyncFetch">Async ID</label>
+        </div>
+      </div>
+      <!-- Target -->
+      <div id="targetGroup" style="display:flex;flex-direction:column;gap:6px">
+        <span class="card-label" style="margin-bottom:0">Target</span>
+        <div class="radio-pill">
+          <input type="radio" name="interceptTarget" value="response" id="targetResponse" checked onchange="onTargetChange()">
+          <label for="targetResponse">Response</label>
+          <input type="radio" name="interceptTarget" value="request" id="targetRequest" onchange="onTargetChange()">
+          <label for="targetRequest">Request</label>
+          <input type="radio" name="interceptTarget" value="both" id="targetBoth" onchange="onTargetChange()">
+          <label for="targetBoth">Both</label>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- URL -->
+  <div class="card" id="urlCard">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+      <span class="card-label" style="margin-bottom:0">API URL contains</span>
+      <button class="btn-ghost" onclick="toggleCurlImport()" id="curlToggleBtn" style="font-size:11px;padding:3px 8px" title="Import from cURL command">⌨ Import cURL</button>
+    </div>
+    <input id="urlInput" type="text" placeholder="e.g. /api/users/* or /api/users" oninput="updateTabName();persistSession()">
+    <!-- cURL import area -->
+    <div class="curl-import-area" id="curlImportArea">
+      <div style="font-size:11px;color:var(--text-muted);margin-bottom:2px">Paste a cURL command — URL and JSON will be auto-extracted</div>
+      <textarea id="curlInput" placeholder="curl 'https://api.example.com/users' -H 'Content-Type: application/json' --data '{&quot;key&quot;:&quot;value&quot;}'" spellcheck="false"></textarea>
+      <div style="display:flex;gap:8px">
+        <button class="btn-primary" onclick="parseCurl()" style="font-size:12px">⌨ Parse & Import</button>
+        <button class="btn-ghost" onclick="toggleCurlImport()" style="font-size:12px">Cancel</button>
+      </div>
+      <div id="curlError" style="font-size:11px;color:var(--red);display:none"></div>
+    </div>
+  </div>
+
+  <!-- REQUEST BODY — full editor card (shown when target = request or both) -->
+  <div class="card hidden" id="requestBodyCard">
+    <div class="section-header" onclick="toggleSection('reqBody')">
+      <div class="row-gap">
+        <span class="card-label" style="margin-bottom:0">Request body</span>
+        <div class="radio-pill" style="margin-left:8px">
+          <input type="radio" name="requestMode" value="merge" id="requestMerge" checked onchange="onRequestModeChange()">
+          <label for="requestMerge">Merge changes</label>
+          <input type="radio" name="requestMode" value="replace" id="requestReplace" onchange="onRequestModeChange()">
+          <label for="requestReplace">Replace entirely</label>
+        </div>
+      </div>
+      <span class="toggle-icon open" id="reqBodyToggle">▼</span>
+    </div>
+    <div id="reqBodySection" class="section-body">
+      <div id="requestMergeHint" style="font-size:11px;color:var(--text-dim);margin-bottom:8px">
+        Fields you edit here will be merged into the real request body before it reaches the server.
+      </div>
+      <div id="requestReplaceHint" style="font-size:11px;color:var(--accent);margin-bottom:8px;display:none">
+        ✓ Replace mode — the real body is ignored. Exactly this JSON is sent to the server.
+      </div>
+      <textarea id="requestBodyInput" placeholder='{ "key": "value" }'></textarea>
+      <div style="margin-top:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <button onclick="loadReqJson()" class="btn-primary">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          Load JSON
+        </button>
+        <button onclick="pasteReqFromClipboard()" class="btn-ghost">⎘ Paste from clipboard</button>
+      </div>
+      <div id="requestBodyError" style="font-size:11px;color:var(--red);margin-top:4px;display:none"></div>
+    </div>
+  </div>
+
+  <!-- REQUEST BODY VIEWER — tree editor -->
+  <div class="card hidden" id="reqViewerCard">
+    <div class="section-header" onclick="toggleSection('reqViewer')">
+      <div class="row-gap">
+        <span class="card-label" style="margin-bottom:0">Edit request body</span>
+        <span class="badge badge-changes hidden" id="reqChangesBadge">0 changes</span>
+      </div>
+      <span class="toggle-icon open" id="reqViewerToggle">▼</span>
+    </div>
+    <div id="reqViewerSection" class="section-body tree-root"></div>
+    <div class="mock-diff-panel hidden" id="reqDiffPanel">
+      <div class="diff-panel-label">Changes summary</div>
+      <div id="reqDiffList"></div>
+    </div>
+  </div>
+
+  <!-- ASYNC MODE CONFIG -->
+  <div class="card async-card hidden" id="asyncCard">
+    <span class="card-label" style="margin-bottom:14px">Async ID config</span>
+    <div class="async-grid">
+      <div class="async-field">
+        <label>Trigger method</label>
+        <select id="asyncTriggerMethod">
+          <option>POST</option><option>GET</option><option>PUT</option><option>PATCH</option><option>DELETE</option>
+        </select>
+      </div>
+      <div class="async-field">
+        <label>Trigger URL contains</label>
+        <input id="asyncTriggerUrl" type="text" placeholder="e.g. /api/jobs/start" oninput="updateTabName()">
+      </div>
+      <div class="async-field">
+        <label>Response method</label>
+        <select id="asyncResponseMethod">
+          <option>GET</option><option>POST</option><option>PUT</option><option>PATCH</option><option>DELETE</option>
+        </select>
+      </div>
+      <div class="async-field">
+        <label>Response URL pattern</label>
+        <input id="asyncResponseUrl" type="text" placeholder="e.g. /api/jobs/*/status or /api/jobs/status?id=*" oninput="updateTabName()">
+      </div>
+    </div>
+    <div class="id-field-selector">
+      <label>ID field in trigger response</label>
+      <input class="field-search" id="idFieldSearch" placeholder="Search fields… (load JSON first)" oninput="filterFieldPills()" autocomplete="off">
+      <div class="id-field-list" id="idFieldList"></div>
+      <div class="id-field-selected" id="idFieldSelected"></div>
+    </div>
+
+    <div class="firestore-section">
+      <label style="font-size:11px;font-weight:600;letter-spacing:0.07em;text-transform:uppercase;color:var(--text-muted)">Firestore mock (optional)</label>
+      <div class="async-hint" style="margin-top:6px">If the app listens to a Firestore document, the script will also patch <code>onSnapshot</code> and fire a fake update with the field below set to your value.</div>
+      <div class="firestore-row">
+        <div class="async-field">
+          <label>Field name</label>
+          <input id="firestoreField" type="text" placeholder="e.g. status">
+        </div>
+        <div class="async-field">
+          <label>Value</label>
+          <input id="firestoreValue" type="text" placeholder="e.g. completed">
+        </div>
+      </div>
+    </div>
+
+    <div class="async-hint" style="margin-top:12px">
+      The script intercepts the <code>trigger</code> request and extracts the ID from the field you select.
+      It then intercepts the <code>response URL</code> (where <code>*</code> matches the captured ID)
+      and returns your mock JSON with any matching placeholder values replaced by the real ID —
+      no real callback needed.
+    </div>
+  </div>
+
+  <!-- JSON -->
+  <div class="card" id="jsonCard">
+    <div class="section-header" onclick="toggleSection('json')">
+      <div class="row-gap">
+        <span class="card-label" style="margin-bottom:0" id="jsonCardLabel">Response JSON</span>
+        <div class="radio-pill" id="responseModeToggle" style="margin-left:8px">
+          <input type="radio" name="responseMode" value="merge" id="responseMerge" checked onchange="onResponseModeChange()">
+          <label for="responseMerge">Merge changes</label>
+          <input type="radio" name="responseMode" value="replace" id="responseReplace" onchange="onResponseModeChange()">
+          <label for="responseReplace">Replace entirely</label>
+        </div>
+      </div>
+      <span class="toggle-icon open" id="jsonToggle">▼</span>
+    </div>
+    <div id="jsonSection" class="section-body">
+      <div id="responseMergeHint" style="font-size:11px;color:var(--text-dim);margin-bottom:8px;display:none">
+        Your changes will be applied on top of the real response. Fields you edit in the tree below override the real values.
+      </div>
+      <div id="responseReplaceHint" style="font-size:11px;color:var(--accent);margin-bottom:8px;display:none">
+        ✓ Replace mode — the real response is ignored. Exactly this JSON is returned to your app.
+      </div>
+      <div class="template-pills">
+        <span class="template-pill" onclick="applyTemplate('empty')" title="Empty successful response">⬜ Empty</span>
+        <span class="template-pill" onclick="applyTemplate('emptyArray')" title="Empty array response">📋 Empty array</span>
+        <span class="template-pill danger" onclick="applyTemplate('401')" title="401 Unauthorized">🔒 401 Unauthorized</span>
+        <span class="template-pill danger" onclick="applyTemplate('403')" title="403 Forbidden">⛔ 403 Forbidden</span>
+        <span class="template-pill danger" onclick="applyTemplate('404')" title="404 Not Found">🔍 404 Not Found</span>
+        <span class="template-pill danger" onclick="applyTemplate('500')" title="500 Server Error">💥 500 Server Error</span>
+        <span class="template-pill warn" onclick="applyTemplate('timeout')" title="Network timeout (no response)">⏱ Timeout</span>
+        <span class="template-pill warn" onclick="applyTemplate('slow')" title="Slow response (3s delay)">🐢 Slow (3s)</span>
+      </div>
+      <textarea id="jsonInput" placeholder='{ "key": "value" }'></textarea>
+      <div style="margin-top:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <button onclick="loadJson()" class="btn-primary"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg> Load JSON</button>
+        <button onclick="pasteFromClipboard()" class="btn-ghost" title="Paste JSON from clipboard">⎘ Paste from clipboard</button>
+        <button onclick="saveAsTemplate()" class="btn-ghost" title="Save current JSON as a reusable template">★ Save as template</button>
+      </div>
+      <!-- Custom template pills — rendered by JS -->
+      <div id="customTemplatePills" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px"></div>
+    </div>
+  </div>
+
+  <!-- VIEWER -->
+  <div class="card hidden" id="viewerCard">
+    <div class="section-header" onclick="toggleSection('viewer')">
+      <div class="row-gap">
+        <span class="card-label" style="margin-bottom:0">Edit JSON</span>
+        <span class="badge badge-changes hidden" id="changesBadge">0 changes</span>
+      </div>
+      <span class="toggle-icon open" id="viewerToggle">▼</span>
+    </div>
+    <div id="viewerSection" class="section-body tree-root"></div>
+    <div class="mock-diff-panel hidden" id="diffPanel">
+      <div class="diff-panel-label">Changes summary</div>
+      <div id="diffList"></div>
+    </div>
+  </div>
+
+  <!-- RESPONSE OPTIONS -->
+  <div class="card hidden" id="responseOptionsCard">
+    <span class="card-label">Response options</span>
+    <div class="response-options">
+      <div class="response-option">
+        <label>Status code</label>
+        <select id="statusCode">
+          <option value="200">200 OK</option>
+          <option value="201">201 Created</option>
+          <option value="204">204 No Content</option>
+          <option value="400">400 Bad Request</option>
+          <option value="401">401 Unauthorized</option>
+          <option value="403">403 Forbidden</option>
+          <option value="404">404 Not Found</option>
+          <option value="422">422 Unprocessable</option>
+          <option value="429">429 Too Many Requests</option>
+          <option value="500">500 Server Error</option>
+          <option value="502">502 Bad Gateway</option>
+          <option value="503">503 Unavailable</option>
+        </select>
+      </div>
+      <div class="response-option">
+        <label>Delay (ms)</label>
+        <div class="delay-wrapper">
+          <input type="number" id="responseDelay" value="0" min="0" max="30000" step="100" placeholder="0">
+          <div class="delay-btn">
+            <button onclick="document.getElementById('responseDelay').stepUp();" title="Increase">▲</button>
+            <button onclick="document.getElementById('responseDelay').stepDown();" title="Decrease">▼</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- RESPONSE RULES -->
+  <div class="card hidden" id="responseRulesCard">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+      <div style="display:flex;align-items:center;gap:8px">
+        <span class="card-label" style="margin-bottom:0">Response Rules</span>
+        <span id="rulesActiveBadge" style="display:none;font-size:10px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--surface);background:var(--accent);padding:2px 7px;border-radius:10px">ACTIVE</span>
+        <span style="font-size:10px;font-weight:400;color:var(--text-dim)">Return different responses per call count</span>
+      </div>
+      <label class="ed-check-label" style="font-size:12px">
+        <input type="checkbox" class="ed-check" id="rulesEnabled" onchange="onRulesToggle()"> Enable
+      </label>
+    </div>
+
+    <div id="rulesList" class="rules-list">
+      <div class="rules-empty" id="rulesEmpty">No rules yet — add one below</div>
+    </div>
+
+    <!-- Add rule -->
+    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px;display:flex;flex-direction:column;gap:8px">
+      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+        <select id="ruleCallType" class="toolbox-select" style="font-size:12px;width:110px;flex-shrink:0">
+          <option value="exact">Call #</option>
+          <option value="after">After call #</option>
+          <option value="always">Always</option>
+        </select>
+        <input type="number" id="ruleCallNum" value="1" min="1" title="Call number"
+          style="width:52px;font-size:12px;padding:5px 6px;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);text-align:center;flex-shrink:0">
+        <select id="ruleStatus" class="toolbox-select" style="font-size:12px;flex:1;min-width:130px;background:var(--surface)">
+          <option value="200">200 OK</option>
+          <option value="201">201 Created</option>
+          <option value="400">400 Bad Request</option>
+          <option value="401">401 Unauthorized</option>
+          <option value="403">403 Forbidden</option>
+          <option value="404">404 Not Found</option>
+          <option value="500">500 Server Error</option>
+        </select>
+        <input type="number" id="ruleDelay" value="0" min="0" placeholder="Delay ms" title="Delay in ms"
+          style="width:80px;font-size:12px;padding:5px 6px;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);text-align:center;flex-shrink:0">
+      </div>
+      <div style="display:flex;gap:6px;align-items:center">
+        <input id="ruleJson" placeholder='Custom JSON (optional — leave empty to use main JSON)' spellcheck="false" autocomplete="off"
+          style="flex:1;font-size:12px;padding:5px 8px;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:monospace;min-width:0">
+        <button onclick="addRule()" class="btn-primary" style="padding:6px 14px;font-size:12px;flex-shrink:0">+ Add</button>
+      </div>
+    </div>
+    <div style="font-size:11px;color:var(--text-dim);margin-top:2px">
+      Rules apply in order — last match wins. Calls beyond all rules use the main response.
+    </div>
+  </div>
+
+  <!-- GENERATE -->
+  <div class="card hidden" id="genSection">
+    <button onclick="generateWithFeedback()" id="generateBtn" class="btn-primary"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg> Generate Script</button>
+  </div>
+
+  <!-- OUTPUT — script hidden from DOM, shown as info card -->
+  <div class="card hidden" id="outputSection">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+      <div style="display:flex;align-items:center;gap:8px">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+        <span style="font-size:14px;font-weight:600;color:var(--text)">Script ready</span>
+      </div>
+      <button onclick="copyScript()" id="copyScriptBtn" class="btn-primary" style="padding:6px 16px">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+        Copy Script
+      </button>
+    </div>
+    <div id="scriptMeta" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px 14px;font-size:12px;line-height:1.8;color:var(--text-muted)"></div>
+    <div style="font-size:11px;color:var(--text-dim);margin-top:8px">Paste into your browser DevTools console — refreshing the page deactivates the mock.</div>
+    <!-- Script stored in memory only, never rendered -->
+    <pre id="output" style="display:none"></pre>
+  </div>
+
+</div>
+
+  </div><!-- end panel-mock -->
+
+  <!-- BEAUTIFIER TOOL -->
+  <div class="tool-panel" id="panel-beautifier">
+    <div class="card">
+      <span class="card-label">Beautifier &amp; Minifier</span>
+      <div class="tool-actions">
+        <button class="btn-primary" onclick="doBeautify()" style="min-width:130px;">✨ Beautify</button>
+        <button class="btn-ghost" onclick="doMinify()">⬛ Minify</button>
+        <button class="btn-ghost" onclick="beautSwap()">⇄ Swap</button>
+        <button class="btn-ghost" onclick="clearBeaut()"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg> Clear</button>
+        <span class="status-msg" id="beautStatus"></span>
+      </div>
+      <div class="beaut-grid">
+        <div class="split-col" style="min-width:0">
+          <label style="display:flex;justify-content:space-between;align-items:center;height:16px">
+            <span>Input <span id="beautInputLabel" style="color:var(--text-muted);font-weight:400;text-transform:none;letter-spacing:0;display:inline-block;min-width:70px"></span></span>
+            <span style="display:inline-flex;gap:2px"><button class="label-btn" onclick="beautCopySide('input',this)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> Copy</button></span></label>
+          <div class="diff-input-wrap">
+            <div class="diff-input-gutter" id="beautInputGutter"><span>1</span></div>
+            <textarea class="diff-input-ta" id="beautInput" placeholder="Paste your JSON here..." spellcheck="false"
+              oninput="updateBeautGutter('Input')" onscroll="updateBeautGutter('Input')"></textarea>
+          </div>
+        </div>
+        <div class="split-col" style="min-width:0">
+          <label style="display:flex;justify-content:space-between;align-items:center;height:16px">
+            <span>Output <span id="beautOutputLabel" style="color:var(--text-muted);font-weight:400;text-transform:none;letter-spacing:0;display:inline-block;min-width:70px"></span></span>
+            <button class="label-btn" onclick="beautCopySide('output',this)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> Copy</button>
+          </label>
+          <div class="diff-input-wrap">
+            <div class="diff-input-gutter" id="beautOutputGutter"><span>1</span></div>
+            <textarea class="diff-input-ta" id="beautOutput" placeholder="Result appears here..." readonly spellcheck="false"
+              onscroll="updateBeautGutter('Output')"></textarea>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- DIFF TOOL -->
+  <div class="tool-panel" id="panel-diff">
+    <div class="card">
+      <span class="card-label">Text Diff</span>
+      <div class="tool-actions">
+        <button class="btn-primary" onclick="doDiff()" style="min-width:130px;">⟷ Compare</button>
+        <button class="btn-primary" id="editCompareBtn" onclick="editAndCompare()" style="display:none;min-width:130px;">✎ Edit</button>
+        <button class="btn-ghost" onclick="swapDiff()">⇄ Swap</button>
+        <button class="btn-ghost" id="diffExpandBtn" onclick="expandDiffInputs()">⤢ Expand</button>
+        <button class="btn-ghost" id="diffFullscreenBtn" onclick="toggleDiffFullscreen()"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg> Fullscreen</button>
+        <button class="btn-ghost" onclick="clearDiff()"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg> Clear</button>
+        <span style="margin-left:auto;display:flex;gap:6px;align-items:center">
+          <span id="diffStats" style="font-size:12px;font-weight:600;white-space:nowrap"></span>
+          <button class="btn-ghost" onclick="diffNav(-1)" style="padding:5px 10px">↑ Prev</button>
+          <button class="btn-ghost" onclick="diffNav(1)" style="padding:5px 10px">↓ Next</button>
+          <span style="color:var(--border)">|</span>
+          <span id="diffNavLabel" style="font-size:12px;color:var(--text-muted);min-width:40px"></span>
+        </span>
+        <span class="status-msg" id="diffStatus"></span>
+      </div>
+      <div class="diff-content-area">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px" id="diffInputRow">
+        <div class="split-col">
+          <label style="display:flex;justify-content:space-between;align-items:center"><span>Original Text <span id="diffLeftInputLabel" style="color:var(--text-muted);font-weight:400;text-transform:none;letter-spacing:0;display:inline-block;min-width:70px"></span></span><button class="label-btn" onclick="copyDiffSide('Left',this)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> Copy</button></label>
+          <div class="diff-input-wrap">
+            <div class="diff-input-gutter" id="diffLeftGutter"><span>1</span></div>
+            <textarea class="diff-input-ta" id="diffLeft" placeholder="Paste original text..." spellcheck="false"
+              oninput="updateDiffGutter('Left')" onscroll="updateDiffGutter('Left')"></textarea>
+          </div>
+        </div>
+        <div class="split-col">
+          <label style="display:flex;justify-content:space-between;align-items:center"><span>Modified Text <span id="diffRightInputLabel" style="color:var(--text-muted);font-weight:400;text-transform:none;letter-spacing:0;display:inline-block;min-width:70px"></span></span><button class="label-btn" onclick="copyDiffSide('Right',this)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> Copy</button></label>
+          <div class="diff-input-wrap">
+            <div class="diff-input-gutter" id="diffRightGutter"><span>1</span></div>
+            <textarea class="diff-input-ta" id="diffRight" placeholder="Paste modified text..." spellcheck="false"
+              oninput="updateDiffGutter('Right')" onscroll="updateDiffGutter('Right')"></textarea>
+          </div>
+        </div>
+      </div>
+      
+      <div class="diff-output-row" id="diffOutputRow" style="display:none">
+        <div class="split-col" style="min-width:0">
+          <label style="display:flex;justify-content:space-between;align-items:center"><span>Original Text <span id="diffLeftLabel" style="color:var(--text-muted);font-weight:400;text-transform:none;letter-spacing:0;display:inline-block;min-width:70px"></span></span><button class="label-btn" onclick="copyDiffSide('Left',this)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> Copy</button></label>
+          <div class="diff-panel">
+              <div class="diff-nums" id="diffLeftNums"></div>
+              <div class="diff-body">
+                <div class="diff-highlights" id="diffLeftHL"></div>
+                <div class="diff-scroll" id="diffLeftScroll">
+                  <div class="diff-text" id="diffLeftText" spellcheck="false"></div>
+                </div>
+              </div>
+          </div>
+        </div>
+        <div class="split-col" style="min-width:0">
+          <label style="display:flex;justify-content:space-between;align-items:center"><span>Modified Text <span id="diffRightLabel" style="color:var(--text-muted);font-weight:400;text-transform:none;letter-spacing:0;display:inline-block;min-width:70px"></span></span><button class="label-btn" onclick="copyDiffSide('Right',this)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> Copy</button></label>
+          <div class="diff-panel">
+              <div class="diff-nums" id="diffRightNums"></div>
+              <div class="diff-body">
+                <div class="diff-highlights" id="diffRightHL"></div>
+                <div class="diff-scroll" id="diffRightScroll">
+                  <div class="diff-text" id="diffRightText" spellcheck="false"></div>
+                </div>
+              </div>
+          </div>
+        </div>
+      </div>
+      </div>
+      </div>
+    </div>
+
+  <!-- VALIDATOR TOOL -->
+  <div class="tool-panel" id="panel-validator">
+    <div class="card">
+      <span class="card-label">JSON Validator</span>
+      <div class="tool-actions">
+        <button class="btn-primary" onclick="doValidate()" style="min-width:130px;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg> Validate</button>
+        <button class="btn-ghost" onclick="fixAndBeautify()"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg> Fix &amp; Beautify</button>
+        <button class="btn-ghost" onclick="clearValid()"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg> Clear</button>
+        <span style="margin-left:auto;display:flex;gap:6px;align-items:center">
+          <span id="validNavLabel" style="font-size:12px;color:var(--text-muted);min-width:54px;text-align:right"></span>
+          <button class="btn-ghost" id="validPrevBtn" onclick="validNav(-1)" style="padding:5px 10px;display:none">↑ Prev</button>
+          <button class="btn-ghost" id="validNextBtn" onclick="validNav(1)" style="padding:5px 10px;display:none">↓ Next</button>
+        </span>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;flex:1;min-height:0">
+        <div class="split-col" style="min-width:0">
+          <label style="display:flex;justify-content:space-between;align-items:center;height:16px">
+            <span>Input JSON <span id="validInputLabel" style="color:var(--text-muted);font-weight:400;text-transform:none;letter-spacing:0;display:inline-block;min-width:70px"></span></span>
+            <button class="label-btn" onclick="validCopy(this)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> Copy</button></label>
+          <!-- Gutter + editor area: highlight layer sits behind the transparent textarea -->
+          <div class="diff-input-wrap" id="validInputWrap" style="position:relative">
+            <div class="diff-input-gutter" id="validGutter"><span>1</span></div>
+            <!-- highlight strips: overflow:hidden clip + translateY follows textarea scroll -->
+            <div id="validHL" style="position:absolute;top:4px;left:52px;right:0;bottom:0;pointer-events:none;overflow:hidden;"></div>
+            <textarea class="diff-input-ta" id="validInput"
+              placeholder="Paste your JSON to validate..."
+              spellcheck="false"
+              style="position:relative;z-index:1;background:transparent;"
+              oninput="onValidInput()" onscroll="syncValidScroll()"></textarea>
+          </div>
+        </div>
+        <div class="split-col" style="min-width:0">
+          <label style="height:16px;display:flex;align-items:center">Result</label>
+          <div class="diff-input-wrap" id="validResultPanel" style="flex-direction:column;overflow:auto;padding:0">
+            <div id="validStatus" style="padding:12px 14px;font-size:13px;font-weight:600;border-bottom:1px solid var(--border);flex-shrink:0;font-family:'SF Mono','Fira Code',monospace">Paste JSON and click Validate</div>
+            <div id="validStats" style="padding:10px 14px;display:none;flex-wrap:wrap;gap:12px;border-bottom:1px solid var(--border);flex-shrink:0"></div>
+            <div id="validErrors" style="flex:1;overflow:auto;padding:8px 0;font-family:'SF Mono','Fira Code',monospace;font-size:12px"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+<!-- TAB CONTEXT MENU -->
+<div class="tab-context-menu hidden" id="tabContextMenu">
+  <div class="tab-context-item" onclick="duplicateTab(contextMenuTabIndex)">⧉ Duplicate tab</div>
+  <div class="tab-context-item" onclick="renameTab(contextMenuTabIndex)">✏️ Rename tab</div>
+  <div class="tab-context-item danger" onclick="closeTabFromMenu(contextMenuTabIndex)" id="contextCloseItem">✕ Close tab</div>
+</div>
+    </div>
+
+
+  <!-- JSON EDITOR TOOL -->
+  <div class="tool-panel" id="panel-editor">
+    <div class="card">
+      <span class="card-label">JSON Editor</span>
+
+      <!-- Top toolbar -->
+      <!-- Toolbar: mirrors the editor-layout grid columns -->
+      <div style="display:grid;grid-template-columns:1fr 340px;gap:16px;margin-bottom:8px">
+        <!-- Left col: Load JSON + paste area — aligns with Structure panel -->
+        <div style="display:flex;gap:8px">
+          <button class="btn-primary" onclick="edLoadJson()" style="min-width:130px;flex-shrink:0"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg> Load JSON</button>
+          <textarea id="edPasteArea" placeholder='Paste JSON here…' spellcheck="false"
+            style="flex:1;height:38px;resize:none;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:0 10px;color:var(--text);font-family:'SF Mono','Fira Code',monospace;font-size:12px;outline:none;overflow:hidden;line-height:38px;box-sizing:border-box"></textarea>
+        </div>
+        <!-- Right col: action buttons — aligns with Toolbox panel -->
+        <div style="display:flex;gap:4px;align-items:center;justify-content:flex-start">
+          <button class="btn-ghost" onclick="edSendToValidator()">✓ Validate</button>
+          <button class="btn-ghost" onclick="edSendToBeautifier()">✨ Beautify</button>
+          <button class="btn-ghost" id="edFullscreenBtn" onclick="toggleEditorFullscreen()"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg> Fullscreen</button>
+          <button class="btn-ghost" onclick="edClear()"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg> Clear</button>
+        </div>
+      </div>
+
+      <!-- Main layout: tree + toolbox -->
+      <div class="editor-layout" style="flex:1;min-height:0">
+
+        <!-- LEFT: Tree panel -->
+        <div class="editor-tree-wrap">
+
+          <!-- Tree header: single row matching other tool labels -->
+          <div class="editor-tree-header" style="padding:8px 12px;display:flex;align-items:center;gap:8px;flex-shrink:0">
+            <span style="font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted)">Structure</span>
+            <span id="edStats" style="font-size:11px;color:var(--text-dim);font-family:'SF Mono','Fira Code',monospace"></span>
+            <span style="margin-left:auto;display:flex;gap:6px;align-items:center">
+              <button class="label-btn" onclick="edExpandAll()" title="Expand all nodes"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg> Expand</button>
+              <button class="label-btn" onclick="edCollapseAll()" title="Collapse all nodes"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/><line x1="10" y1="14" x2="3" y2="21"/><line x1="21" y1="3" x2="14" y2="10"/></svg> Collapse</button>
+              <button class="label-btn" id="edSelectModeBtn" onclick="edToggleSelectMode()" title="Toggle multi-select mode">☐ Select</button>
+              <span style="width:1px;height:14px;background:var(--border);display:inline-block"></span>
+              <button class="label-btn" onclick="edCopyJson(this)" title="Copy edited JSON"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> Copy</button>
+              <button class="label-btn" onclick="edDownloadJson()" title="Download edited JSON"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Download</button>
+            </span>
+          </div>
+          <!-- Search bar — sits inside tree body area -->
+          <div style="padding:6px 10px;border-bottom:1px solid var(--border);background:var(--surface2);flex-shrink:0;position:relative">
+            <input id="edSearch" class="toolbox-input" placeholder="🔍 Search keys or values…" spellcheck="false"
+              oninput="edDoSearch()" style="width:100%;padding-right:80px">
+            <span id="edSearchCount" style="position:absolute;right:18px;top:50%;transform:translateY(-50%);font-size:11px;color:var(--text-dim);pointer-events:none"></span>
+          </div>
+          <div id="edBreadcrumb" style="font-size:11px;color:var(--text-dim);font-family:'SF Mono','Fira Code',monospace;display:none;padding:4px 12px;border-bottom:1px solid var(--border);background:var(--surface2)">root</div>
+
+          <!-- Level legend — clickable depth pills -->
+          <div class="ed-level-legend" id="edLevelLegend" style="display:none">
+            <span style="font-size:10px;color:var(--text-dim);font-weight:600;margin-right:2px">DEPTH:</span>
+          </div>
+
+          <!-- Tree body -->
+          <div class="editor-tree-body" id="edTree">
+            <div class="editor-empty">
+              <div class="editor-empty-icon">✎</div>
+              <div style="font-size:14px;font-weight:600;margin-bottom:6px">JSON Editor</div>
+              <div style="font-size:12px;color:var(--text-dim)">Paste your JSON above and click <strong>Load JSON</strong></div>
+            </div>
+          </div>
+
+          <!-- Bottom status bar -->
+          <div id="edStatusBar" style="padding:6px 12px;border-top:1px solid var(--border);font-size:11px;color:var(--text-dim);display:flex;gap:12px;flex-shrink:0;background:var(--surface2)">
+            <span id="edStatusMsg">Ready</span>
+          </div>
+        </div>
+
+        <!-- RIGHT: Tabbed toolbox -->
+        <div class="editor-toolbox" style="display:flex;flex-direction:column;background:var(--surface);border:1px solid var(--border);border-radius:10px;min-height:0;overflow:hidden">
+
+          <!-- Tab nav -->
+          <div style="display:flex;border-bottom:1px solid var(--border);background:var(--surface);flex-shrink:0;padding:0 4px;gap:2px">
+            <button class="ed-tab-btn active" id="edTabBulk"      onclick="edSwitchTab('bulk')">⚡ Bulk</button>
+            <button class="ed-tab-btn"        id="edTabAnalytics" onclick="edSwitchTab('analytics')">📊 Analyze</button>
+            <button class="ed-tab-btn"        id="edTabSchema"    onclick="edSwitchTab('schema')">🧬 Schema</button>
+            <button class="ed-tab-btn"        id="edTabHistory"   onclick="edSwitchTab('history')">⏱ History</button>
+          </div>
+
+          <!-- BULK TAB -->
+          <div id="edPaneBulk" style="flex:1;overflow-y:auto;display:block;padding:10px">
+
+          <!-- SCOPE -->
+          <div class="toolbox-card">
+            <div class="toolbox-card-header">🎯 Scope</div>
+            <div class="toolbox-body">
+              <div class="scope-row" style="margin-bottom:6px">
+                <button class="scope-btn active" id="edScopeAll" onclick="edSetScope('all')">All blocks at level</button>
+                <button class="scope-btn" id="edScopeSelected" onclick="edSetScope('selected')">Selected only</button>
+              </div>
+              <div style="display:flex;gap:6px;align-items:center">
+                <span class="toolbox-label" style="white-space:nowrap">Target level:</span>
+                <select class="toolbox-select" id="edLevelSelect" style="flex:1">
+                  <option value="0">None</option>
+                  <option value="1">Level 1 (root children)</option>
+                </select>
+              </div>
+              <div id="edScopeInfo" style="font-size:11px;color:var(--accent);margin-top:6px;font-weight:500">Load JSON to begin</div>
+            </div>
+          </div>
+
+          <!-- GENERATE BLOCKS -->
+          <div class="toolbox-card">
+            <div class="toolbox-card-header">⚡ Generate Blocks</div>
+            <div class="toolbox-body">
+              <div style="display:flex;gap:6px;margin-bottom:8px">
+                <button class="scope-btn active" id="edGenTypeObj" onclick="edSetGenType('object')">{ } Object</button>
+                <button class="scope-btn" id="edGenTypeArr" onclick="edSetGenType('array')">[ ] Array</button>
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 60px 60px;gap:6px;margin-bottom:6px;align-items:center">
+                <input class="toolbox-input" id="edGenPrefix" placeholder='Prefix e.g. "block"' spellcheck="false">
+                <input class="toolbox-input" id="edGenFrom" type="number" value="1" min="1" title="Start" style="text-align:center">
+                <input class="toolbox-input" id="edGenTo" type="number" value="10" min="1" title="End" style="text-align:center">
+              </div>
+              <div style="font-size:11px;color:var(--text-dim);margin-bottom:8px">From <strong id="edGenFromLabel">1</strong> to <strong id="edGenToLabel">10</strong> → <strong id="edGenCountLabel">10</strong> blocks</div>
+              <div style="display:flex;flex-direction:column;gap:4px;margin-bottom:8px;padding:8px;background:var(--surface2);border-radius:6px;border:1px solid var(--border)">
+                <div style="font-size:11px;color:var(--text-muted);font-weight:600;margin-bottom:4px">Auto-inject:</div>
+                <label class="ed-check-label"><input type="checkbox" class="ed-check" id="edGenInjectId" checked> <code style="font-size:11px">"id"</code> = index</label>
+                <label class="ed-check-label"><input type="checkbox" class="ed-check" id="edGenInjectKey"> <code style="font-size:11px">"key"</code> = "block1"…</label>
+                <label class="ed-check-label"><input type="checkbox" class="ed-check" id="edGenInjectUuid"> <code style="font-size:11px">"uuid"</code> = UUID</label>
+              </div>
+              <div style="font-size:11px;color:var(--text-muted);font-weight:600;margin-bottom:4px">Template <span style="font-weight:400;color:var(--text-dim)">(optional)</span>:</div>
+              <textarea id="edGenTemplate" class="toolbox-input" spellcheck="false" rows="3"
+                placeholder='{"name":"","active":true}'
+                style="width:100%;resize:vertical;font-family:&apos;SF Mono&apos;,monospace;font-size:11px;line-height:1.5;margin-bottom:8px"></textarea>
+              <div style="display:flex;gap:6px;margin-bottom:8px">
+                <button class="scope-btn active" id="edGenModeReplace" onclick="edSetGenMode('replace')">Replace all</button>
+                <button class="scope-btn" id="edGenModeMerge" onclick="edSetGenMode('merge')">Merge into existing</button>
+              </div>
+              <button class="toolbox-btn" onclick="edGenerateBlocks()" style="width:100%;font-size:13px;padding:8px;color:#0a0c10">⚡ Generate</button>
+              <div id="edGenResult" style="font-size:11px;color:var(--text-dim);margin-top:4px"></div>
+            </div>
+          </div>
+
+          <!-- ADD FIELD -->
+          <div class="toolbox-card">
+            <div class="toolbox-card-header">➕ Add Field</div>
+            <div class="toolbox-body">
+              <input class="toolbox-input" id="edAddKey" placeholder='Field name…' spellcheck="false" style="width:100%;margin-bottom:6px">
+              <div style="display:flex;gap:6px;margin-bottom:6px">
+                <select class="toolbox-select" id="edAddType" onchange="edAddTypeChange()" style="flex:1">
+                  <optgroup label="── Values ──">
+                    <option value="value">Custom value</option>
+                    <option value="empty">Empty string ""</option>
+                    <option value="null">null</option>
+                    <option value="true">true</option>
+                    <option value="false">false</option>
+                    <option value="number">Number (0)</option>
+                    <option value="auto_increment">Auto-increment (1,2,3…)</option>
+                  </optgroup>
+                  <optgroup label="── Nested ──">
+                    <option value="empty_obj">Object {} — nest children</option>
+                    <option value="empty_arr">Array [] — add items</option>
+                  </optgroup>
+                  <optgroup label="── Random ──">
+                    <option value="random_str">Random string</option>
+                    <option value="random_uuid">Random UUID (unique)</option>
+                    <option value="random_num">Random number</option>
+                    <option value="random_bool">Random bool</option>
+                    <option value="timestamp">ISO Timestamp</option>
+                  </optgroup>
+                </select>
+                <input class="toolbox-input" id="edAddValue" placeholder='value' spellcheck="false" style="flex:1">
+              </div>
+              <button class="toolbox-btn" onclick="edBulkAdd()" style="width:100%">➕ Add to all in scope</button>
+              <div id="edAddHint" style="font-size:11px;color:var(--text-dim);margin-top:4px;line-height:1.4;display:none"></div>
+            </div>
+          </div>
+
+          <!-- RENAME FIELD -->
+          <div class="toolbox-card">
+            <div class="toolbox-card-header">✏️ Rename Field</div>
+            <div class="toolbox-body">
+              <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">
+                <input class="toolbox-input" id="edRenameFrom" placeholder='Current name…' spellcheck="false" style="flex:1">
+                <span style="color:var(--text-dim)">→</span>
+                <input class="toolbox-input" id="edRenameTo" placeholder='New name…' spellcheck="false" style="flex:1">
+              </div>
+              <button class="toolbox-btn" onclick="edBulkRename()" style="width:100%">✏️ Rename in scope</button>
+            </div>
+          </div>
+
+          <!-- EDIT VALUES -->
+          <div class="toolbox-card">
+            <div class="toolbox-card-header">🔄 Edit Values</div>
+            <div class="toolbox-body">
+              <input class="toolbox-input" id="edEditKey" placeholder='Field name…' spellcheck="false" style="width:100%;margin-bottom:6px">
+              <div style="display:flex;gap:6px">
+                <input class="toolbox-input" id="edEditValue" placeholder='New value…' spellcheck="false" style="flex:1">
+                <button class="toolbox-btn" onclick="edBulkEditValue()">Apply</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- REMOVE FIELD -->
+          <div class="toolbox-card">
+            <div class="toolbox-card-header">🗑 Remove Field</div>
+            <div class="toolbox-body">
+              <div style="display:flex;gap:6px;margin-bottom:6px">
+                <input class="toolbox-input" id="edRemoveKey" placeholder='Field name to remove…' spellcheck="false" style="flex:1">
+                <button class="toolbox-btn danger" onclick="edBulkRemove()">Remove</button>
+              </div>
+              <div id="edRemoveSuggestions" style="display:flex;flex-wrap:wrap;gap:4px"></div>
+            </div>
+          </div>
+
+          <!-- FIND & REPLACE -->
+          <div class="toolbox-card">
+            <div class="toolbox-card-header">🔍 Find & Replace</div>
+            <div class="toolbox-body">
+              <input class="toolbox-input" id="edFindVal" placeholder='Find value…' spellcheck="false" style="width:100%;margin-bottom:6px">
+              <input class="toolbox-input" id="edReplaceVal" placeholder='Replace with…' spellcheck="false" style="width:100%;margin-bottom:6px">
+              <div style="display:flex;gap:10px;margin-bottom:6px">
+                <label class="ed-check-label"><input type="checkbox" class="ed-check" id="edFindRegex"> Regex</label>
+                <label class="ed-check-label"><input type="checkbox" class="ed-check" id="edFindCaseSensitive"> Case sensitive</label>
+              </div>
+              <button class="toolbox-btn" onclick="edFindReplace()" style="width:100%">🔄 Replace all</button>
+              <div id="edFindResult" style="font-size:11px;color:var(--text-dim);margin-top:4px"></div>
+            </div>
+          </div>
+
+          <!-- CONDITIONAL OP -->
+          <div class="toolbox-card">
+            <div class="toolbox-card-header">⚙️ Conditional Op</div>
+            <div class="toolbox-body">
+              <div style="font-size:11px;color:var(--text-muted);margin-bottom:6px">Only affect blocks WHERE:</div>
+              <div style="display:flex;gap:4px;margin-bottom:6px;flex-wrap:wrap">
+                <input class="toolbox-input" id="edCondKey" placeholder='field' spellcheck="false" style="width:80px">
+                <select class="toolbox-select" id="edCondOp" style="width:70px">
+                  <option value="eq">==</option>
+                  <option value="neq">!=</option>
+                  <option value="contains">has</option>
+                  <option value="exists">exists</option>
+                  <option value="missing">missing</option>
+                </select>
+                <input class="toolbox-input" id="edCondVal" placeholder='value' spellcheck="false" style="flex:1;min-width:50px">
+              </div>
+              <div style="font-size:11px;color:var(--text-muted);margin-bottom:6px">Then SET:</div>
+              <div style="display:flex;gap:4px;margin-bottom:6px">
+                <input class="toolbox-input" id="edCondSetKey" placeholder='field' spellcheck="false" style="flex:1">
+                <span style="color:var(--text-dim);align-self:center">=</span>
+                <input class="toolbox-input" id="edCondSetVal" placeholder='value' spellcheck="false" style="flex:1">
+              </div>
+              <button class="toolbox-btn" onclick="edConditionalOp()" style="width:100%">⚙️ Run conditional op</button>
+              <div id="edCondResult" style="font-size:11px;color:var(--text-dim);margin-top:4px"></div>
+            </div>
+          </div>
+
+          <!-- TYPE CAST -->
+          <div class="toolbox-card">
+            <div class="toolbox-card-header">🔀 Type Cast</div>
+            <div class="toolbox-body">
+              <input class="toolbox-input" id="edCastKey" placeholder='Field name…' spellcheck="false" style="width:100%;margin-bottom:6px">
+              <div style="display:flex;gap:6px;align-items:center">
+                <span class="toolbox-label">Cast to:</span>
+                <select class="toolbox-select" id="edCastTo" style="flex:1">
+                  <option value="string">String</option>
+                  <option value="number">Number</option>
+                  <option value="boolean">Boolean</option>
+                  <option value="null">null</option>
+                </select>
+                <button class="toolbox-btn" onclick="edTypeCast()">Cast</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- SORT & TRANSFORM -->
+          <div class="toolbox-card">
+            <div class="toolbox-card-header">⬆ Sort & Transform</div>
+            <div class="toolbox-body" style="gap:6px">
+              <div style="display:flex;gap:6px">
+                <select class="toolbox-select" id="edSortDir" style="flex:1">
+                  <option value="asc">A → Z</option>
+                  <option value="desc">Z → A</option>
+                </select>
+                <button class="toolbox-btn" onclick="edSortKeys()">Sort keys</button>
+              </div>
+              <div style="height:1px;background:var(--border)"></div>
+              <div style="display:flex;gap:6px">
+                <button class="toolbox-btn neutral" onclick="edFlatten()" style="flex:1">⬇ Flatten</button>
+                <button class="toolbox-btn neutral" onclick="edUnflatten()" style="flex:1">⬆ Unflatten</button>
+              </div>
+              <button class="toolbox-btn neutral" onclick="edDedupeBlocks()" style="width:100%">✦ Dedupe blocks</button>
+            </div>
+          </div>
+
+          </div><!-- /bulk pane -->
+
+          <!-- ANALYTICS TAB -->
+          <div id="edPaneAnalytics" style="flex:1;overflow-y:auto;display:none;padding:10px">
+            <div class="toolbox-card">
+              <div class="toolbox-card-header">📊 Data Analysis</div>
+              <div class="toolbox-body">
+                <button class="toolbox-btn" onclick="edRunAnalytics()" style="width:100%;margin-bottom:8px">▶ Run Analysis</button>
+                <div id="edAnalyticsOut" style="font-size:12px;color:var(--text-muted)">Load JSON and click Run Analysis.</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- SCHEMA TAB -->
+          <div id="edPaneSchema" style="flex:1;overflow-y:auto;display:none;padding:10px">
+            <div class="toolbox-card">
+              <div class="toolbox-card-header">🧬 Schema</div>
+              <div class="toolbox-body">
+                <button class="toolbox-btn" onclick="edDetectSchema()" style="width:100%;margin-bottom:8px">▶ Detect Schema</button>
+                <button class="toolbox-btn neutral" onclick="edCopySchema(this)" style="width:100%;margin-bottom:8px">⎘ Copy Schema</button>
+                <pre id="edSchemaOut" style="font-size:11px;color:var(--text-muted);white-space:pre-wrap;word-break:break-all;margin-top:4px;max-height:300px;overflow:auto">Click Detect Schema to generate a JSON Schema.</pre>
+              </div>
+            </div>
+          </div>
+
+          <!-- HISTORY TAB -->
+          <div id="edPaneHistory" style="flex:1;overflow-y:auto;display:none;padding:10px">
+            <div class="toolbox-card">
+              <div class="toolbox-card-header">⏱ History
+                <button class="toolbox-btn neutral" onclick="edUndo()" style="margin-left:auto;padding:2px 10px;font-size:11px">↩ Undo</button>
+              </div>
+              <div style="padding:8px">
+                <div class="history-list" id="edHistory">
+                  <div class="history-empty">No operations yet</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div><!-- /toolbox -->
+      </div><!-- /editor-layout -->
+    </div>
+  </div><!-- /panel-editor -->
+
+<script src="app.js"></script>
+</body>
+</html>

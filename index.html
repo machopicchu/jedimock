@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JediMock — The fastest way to mock an API</title>
+<meta name="description" content="Paste one script in DevTools. The next request is intercepted. No setup in your app, no server, no certificate.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #0a0a0a;
+  --line: rgba(255,255,255,0.07);
+  --accent: #00D4FF;
+  --text: #e8e8e8;
+  --muted: #666;
+  --dim: #333;
+}
+
+html { scroll-behavior: smooth; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Geist', sans-serif;
+  font-size: 16px;
+  line-height: 1.6;
+  min-height: 100vh;
+}
+
+a { color: inherit; text-decoration: none; }
+
+/* ── LAYOUT ── */
+.page {
+  max-width: 680px;
+  margin: 0 auto;
+  padding: 0 32px;
+}
+
+/* ── NAV ── */
+nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 28px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.nav-logo {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 15px; font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.nav-links {
+  display: flex; align-items: center; gap: 24px;
+  font-size: 13px; color: var(--muted);
+}
+
+.nav-links a:hover { color: var(--text); }
+
+.nav-cta {
+  background: var(--accent);
+  color: #000 !important;
+  font-weight: 600;
+  font-size: 13px;
+  padding: 7px 16px;
+  border-radius: 6px;
+  transition: opacity 0.15s;
+}
+.nav-cta:hover { opacity: 0.85; }
+
+/* ── MAIN ── */
+main { padding: 80px 0 60px; }
+
+.headline {
+  font-size: clamp(36px, 6vw, 54px);
+  font-weight: 700;
+  line-height: 1.08;
+  letter-spacing: -0.04em;
+  margin-bottom: 24px;
+}
+
+.headline .hl { color: var(--accent); }
+
+.lede {
+  font-size: 18px;
+  color: var(--muted);
+  line-height: 1.6;
+  max-width: 520px;
+  margin-bottom: 36px;
+  font-weight: 400;
+}
+
+.lede strong { color: var(--text); font-weight: 500; }
+
+.cta-row {
+  display: flex; align-items: center; gap: 16px;
+  margin-bottom: 72px;
+  flex-wrap: wrap;
+}
+
+.btn-main {
+  background: var(--accent);
+  color: #000;
+  font-size: 14px; font-weight: 600;
+  font-family: 'Geist', sans-serif;
+  padding: 11px 22px;
+  border-radius: 7px; border: none;
+  display: inline-flex; align-items: center; gap: 7px;
+  cursor: pointer; text-decoration: none;
+  transition: all 0.15s;
+}
+.btn-main:hover { opacity: 0.88; transform: translateY(-1px); }
+
+.btn-sec {
+  font-size: 13px; color: var(--muted);
+  display: inline-flex; align-items: center; gap: 6px;
+}
+.btn-sec:hover { color: var(--text); }
+
+/* ── CODE BLOCK ── */
+.code-block {
+  background: #111;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+  margin-bottom: 64px;
+  font-family: 'Geist Mono', monospace;
+  font-size: 13px;
+}
+
+.code-tab-bar {
+  display: flex;
+  border-bottom: 1px solid var(--line);
+  background: #0d0d0d;
+}
+
+.code-tab {
+  padding: 10px 16px;
+  font-size: 11px;
+  color: var(--muted);
+  border-right: 1px solid var(--line);
+  cursor: default;
+}
+.code-tab.active { color: var(--text); background: #111; }
+
+.code-body { padding: 20px 20px; line-height: 1.8; }
+
+.c-dim    { color: #444; }
+.c-green  { color: #7ec8a0; }
+.c-blue   { color: #79b8ff; }
+.c-orange { color: #e0974a; }
+.c-cyan   { color: var(--accent); }
+.c-muted  { color: #666; }
+.c-white  { color: #e8e8e8; }
+
+.code-line { display: block; }
+.code-line.gap { margin-top: 8px; }
+
+/* ── PROSE ── */
+.prose {
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1.75;
+  margin-bottom: 48px;
+}
+
+.prose p { margin-bottom: 16px; }
+.prose p:last-child { margin-bottom: 0; }
+.prose strong { color: var(--text); font-weight: 500; }
+.prose code {
+  font-family: 'Geist Mono', monospace;
+  font-size: 12px;
+  color: var(--accent);
+  background: rgba(0,212,255,0.07);
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+/* ── COMPARISON ── */
+.comparison {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+  margin-bottom: 64px;
+}
+
+.comparison-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  border-bottom: 1px solid var(--line);
+}
+.comparison-row:last-child { border-bottom: none; }
+
+.comp-cell {
+  padding: 14px 18px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.comp-cell:first-child { border-right: 1px solid var(--line); color: var(--muted); }
+.comp-cell:last-child { color: var(--text); }
+
+.comp-header .comp-cell {
+  font-size: 11px;
+  font-family: 'Geist Mono', monospace;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--dim);
+  background: #0d0d0d;
+  padding: 10px 18px;
+}
+
+.comp-cell .no { color: #555; }
+.comp-cell .yes { color: var(--accent); }
+
+/* ── DIVIDER ── */
+hr {
+  border: none;
+  border-top: 1px solid var(--line);
+  margin: 48px 0;
+}
+
+/* ── FOOTER ── */
+footer {
+  border-top: 1px solid var(--line);
+  padding: 28px 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--dim);
+}
+footer a { color: var(--dim); }
+footer a:hover { color: var(--muted); }
+
+/* ── CURSOR ── */
+@keyframes blink { 0%,100%{opacity:1}50%{opacity:0} }
+.cur {
+  display: inline-block; width: 7px; height: 13px;
+  background: var(--accent); vertical-align: middle;
+  animation: blink 1s step-end infinite;
+  margin-left: 2px;
+}
+
+@media (max-width: 600px) {
+  .page { padding: 0 20px; }
+  .comparison-row { grid-template-columns: 1fr; }
+  .comp-cell:first-child { border-right: none; border-bottom: 1px solid var(--line); }
+  .comp-header { display: none; }
+}
+</style>
+</head>
+<body>
+<div class="page">
+
+<nav>
+  <a href="/" class="nav-logo">
+    <svg width="20" height="20" viewBox="0 0 32 32">
+      <rect width="32" height="32" rx="6" fill="#151515"/>
+      <polygon points="19,3 11,16 17,16 13,29 23,14 17,14" fill="#00D4FF"/>
+      <rect x="10" y="24" width="12" height="2.5" rx="1.25" fill="#00D4FF" opacity="0.4"/>
+    </svg>
+    JediMock
+  </a>
+  <div class="nav-links">
+    <a href="https://github.com/machopicchu/jedimock" class="nav-link" target="_blank">GitHub</a>
+    <a href="./app.html" class="nav-cta">Open app</a>
+  </div>
+</nav>
+
+<main>
+
+  <h1 class="headline">
+    The fastest way to<br>
+    mock an API.<span class="hl">_</span>
+  </h1>
+
+  <p class="lede">
+    You need the API to return something specific. <strong>The backend isn't yours to change.</strong>
+    Open JediMock, configure the mock, paste one script in DevTools.
+    The next request is intercepted. Nothing else required.
+  </p>
+
+  <div class="cta-row">
+    <a href="./app.html" class="btn-main">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+      Open JediMock
+    </a>
+    <a href="https://github.com/machopicchu/jedimock" class="btn-gh" target="_blank">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+      View on GitHub
+    </a>
+
+  </div>
+
+  <!-- What it looks like in practice -->
+  <div class="code-block">
+    <div class="code-tab-bar">
+      <div class="code-tab active">DevTools — Console</div>
+    </div>
+    <div class="code-body">
+      <span class="code-line"><span class="c-muted">// script runs once on paste</span></span>
+      <span class="code-line gap"><span class="c-cyan">⚡ JediMock active</span> <span class="c-muted">{</span> <span class="c-blue">url</span><span class="c-muted">:</span> <span class="c-green">'/api/users/*'</span><span class="c-muted">,</span> <span class="c-blue">target</span><span class="c-muted">:</span> <span class="c-green">'Response'</span><span class="c-muted">,</span> <span class="c-blue">mode</span><span class="c-muted">:</span> <span class="c-green">'Merge'</span> <span class="c-muted">}</span></span>
+      <span class="code-line gap"><span class="c-muted">// your app makes a request as normal</span></span>
+      <span class="code-line"><span class="c-cyan">⚡ JediMock intercepted</span> <span class="c-muted">{</span> <span class="c-blue">url</span><span class="c-muted">:</span> <span class="c-green">'/api/users/42'</span><span class="c-muted">,</span> <span class="c-blue">status</span><span class="c-muted">:</span> <span class="c-orange">200</span><span class="c-muted">,</span> <span class="c-blue">delay</span><span class="c-muted">:</span> <span class="c-green">'0ms'</span> <span class="c-muted">}</span></span>
+      <span class="code-line gap"><span class="c-muted">// test auth flow — 401 on first call, 200 after</span></span>
+      <span class="code-line"><span class="c-cyan">⚡ JediMock rule matched</span> <span class="c-muted">{</span> <span class="c-blue">rule</span><span class="c-muted">:</span> <span class="c-green">'Call #1'</span><span class="c-muted">,</span> <span class="c-blue">status</span><span class="c-muted">:</span> <span class="c-orange">401</span> <span class="c-muted">}</span></span>
+      <span class="code-line"><span class="c-cyan">⚡ JediMock rule matched</span> <span class="c-muted">{</span> <span class="c-blue">rule</span><span class="c-muted">:</span> <span class="c-green">'After #1'</span><span class="c-muted">,</span> <span class="c-blue">status</span><span class="c-muted">:</span> <span class="c-orange">200</span> <span class="c-muted">}</span></span>
+      <span class="code-line gap"><span class="c-muted">> </span><span class="cur"></span></span>
+    </div>
+  </div>
+
+  <div class="prose">
+    <p>
+      No service worker registered in your app. No proxy running on localhost.
+      No HTTPS certificate to install. No Mockoon server to keep running.
+      <strong>Just a script you paste once.</strong>
+    </p>
+    <p>
+      It intercepts both <code>fetch</code> and <code>XMLHttpRequest</code>.
+      You can modify the response, the request body, or both — merge your changes
+      on top of the real data or replace it entirely. Wildcards work:
+      <code>/api/users/*</code> catches every user endpoint in one script.
+    </p>
+    <p>
+      Refresh the page and the mock is gone. The real API comes back.
+      No cleanup, no config to undo.
+    </p>
+  </div>
+
+  <div class="comparison">
+    <div class="comparison-row comp-header">
+      <div class="comp-cell">Everything else</div>
+      <div class="comp-cell">JediMock</div>
+    </div>
+    <div class="comparison-row">
+      <div class="comp-cell"><span class="no">Needs a service worker in your app</span></div>
+      <div class="comp-cell"><span class="yes">Zero footprint in your app</span></div>
+    </div>
+    <div class="comparison-row">
+      <div class="comp-cell"><span class="no">Proxy server running locally</span></div>
+      <div class="comp-cell"><span class="yes">Nothing running except your browser</span></div>
+    </div>
+    <div class="comparison-row">
+      <div class="comp-cell"><span class="no">HTTPS certificate setup</span></div>
+      <div class="comp-cell"><span class="yes">Paste a script. Done.</span></div>
+    </div>
+    <div class="comparison-row">
+      <div class="comp-cell"><span class="no">Separate mock server to maintain</span></div>
+      <div class="comp-cell"><span class="yes">Nothing to install or maintain</span></div>
+    </div>
+    <div class="comparison-row">
+      <div class="comp-cell"><span class="no">Modify response OR request, not both</span></div>
+      <div class="comp-cell"><span class="yes">Intercept request + response together</span></div>
+    </div>
+  </div>
+
+  <div class="prose">
+    <p>
+      <strong>Five tools in one file.</strong> Mock generator, JSON editor with bulk operations,
+      validator with accurate line-level errors, diff, beautifier.
+      Session persists across page reloads. Import and export configs.
+      Share a mock via URL. No account needed.
+    </p>
+  </div>
+
+  <div class="cta-row">
+    <a href="./app.html" class="btn-main">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+      Open JediMock — free
+    </a>
+  </div>
+
+</main>
+
+<footer>
+  <span>JediMock v1.0 — zero dependencies</span>
+  <div style="display:flex;gap:20px;align-items:center">
+    <a href="https://github.com/machopicchu/jedimock" target="_blank" style="color:var(--dim)">GitHub</a>
+    <a href="https://buymeacoffee.com/machopicchu" target="_blank" style="color:var(--dim)">☕ Buy me a coffee</a>
+  </div>
+  <span>
+  </span>
+</footer>
+
+</div>
+</body>
+</html>
