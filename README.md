@@ -42,10 +42,18 @@ Intercept fetch and XHR requests in your browser and return custom JSON response
 - Changes summary diff panel with field-level undo
 - Merge your changes into the real body or replace it entirely
 
+**Fallback mode**
+- Available in both Intercept and Async ID modes (per tab)
+- **Intercept fallback** — if the server never responds within the configured timeout, JediMock returns your mock instead. Triggers on timeout and network errors.
+- **Async ID fallback** — if the response URL never fires after the trigger, JediMock constructs the full response URL using the captured ID and returns your mock. Requires the full response URL pattern (the `*` is replaced with the captured ID).
+- Configurable timeout per tab — default 30 seconds
+- Activation log shows `fallback: '30s'` when enabled
+
 **Script generation**
-- Clean output card showing URL, target, mode, active rules — no raw code visible
+- Clean output card showing URL, target, mode, active rules, fallback — no raw code visible
 - Script is readable and ready to paste
-- Auto-logs every interception: `⚡ JediMock active`, `⚡ JediMock intercepted`, `⚡ JediMock rule matched`
+- Auto-logs every interception: `⚡ JediMock active`, `⚡ JediMock intercepted`, `⚡ JediMock rule matched`, `⚡ JediMock fallback`
+- **Outdated indicator** — Generate button turns amber with "Regenerate" label whenever config changes after generating. Copy button dims until regenerated.
 - Clipboard fallback if copy API is blocked
 
 **Other**
@@ -150,11 +158,13 @@ Lint JSON with accurate line-level error reporting.
 2. Choose your target — **Response**, **Request**, or **Both**
 3. Paste your JSON and click **Load JSON** (for response) or **Load JSON** in the request body card
 4. Edit fields in the tree if needed — changes are tracked in the diff panel
-5. Set status code, delay, and response rules (optional)
+5. Set status code, delay, response rules, and fallback mode (optional)
 6. Click **⚡ Generate Script**
 7. Copy the script and paste it into your browser's DevTools console
 
 The script intercepts all matching requests automatically. The console logs every interception with `⚡ JediMock intercepted`. Refresh the page to deactivate.
+
+If you change any configuration after generating, the button turns amber — click **Regenerate** to update the script.
 
 ---
 

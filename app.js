@@ -239,10 +239,16 @@ function saveState(){
     tabs[currentTab].reqDeletions = reqDeletions;
     tabs[currentTab].reqAdditions = reqAdditions;
     tabs[currentTab].reqCollapsed = reqCollapsed;
+    tabs[currentTab].fallbackEnabled = getFallbackEnabled();
+    tabs[currentTab].fallbackTimeout = getFallbackTimeout();
+    tabs[currentTab].fallbackEnabledAsync = getFallbackEnabledAsync();
+    tabs[currentTab].fallbackTimeoutAsync = getFallbackTimeoutAsync();
+    // scriptUpToDate is managed separately — don't overwrite with global state
   }
 }
 
 function loadState(){
+  _loadingState = true;
   const t=tabs[currentTab];
 
   urlInput.value=t.url||"";
@@ -388,6 +394,7 @@ function loadJson(){
   updateChangesBadge();
   updateVisibility();
   render();
+  markScriptOutdated();
 }
 
 /* TREE */
@@ -413,6 +420,10 @@ function buildAsyncFieldSelectors(){
   const q=document.getElementById("idFieldSearch");
   if(q&&q.value.trim()) filterFieldPills();
   else { const el=document.getElementById("idFieldList"); if(el) el.innerHTML=""; }
+}
+
+function onIdFieldSelected(){
+  markScriptOutdated();
 }
 
 function filterFieldPills(){
@@ -809,6 +820,7 @@ function walk(obj,path,parent){
 }
 
 function updateChangesBadge(){
+  if(changes.length > 0 || deletions.length > 0 || additions.length > 0) markScriptOutdated();
   // Update req badge if in req context
   const badge=document.getElementById("changesBadge");
   if(!badge) return;
@@ -881,15 +893,64 @@ function wildcardToRegex(pattern){
 }
 
 /* Fetch + XHR: patches changes, applies deletions, injects additions */
-function generateWithFeedback(){
+function markScriptOutdated(){
+  if(_loadingState) return; // don't mark outdated during state load
+  // Only show outdated if a script has been generated
+  const op = document.getElementById('output');
+  if(!op || !op.textContent) return;
+  const btn = document.getElementById('generateBtn');
+  const os = document.getElementById('outputSection');
+  if(btn){
+    btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg> Regenerate';
+    btn.style.background = 'var(--yellow, #f59e0b)';
+    btn.style.border = 'none';
+    btn.style.color = '#000';
+  }
+  if(os){
+    let badge = document.getElementById('scriptOutdatedBadge');
+    if(!badge){
+      badge = document.createElement('div');
+      badge.id = 'scriptOutdatedBadge';
+      badge.style.cssText = 'font-size:11px;color:#f59e0b;display:flex;align-items:center;gap:5px;margin-top:8px';
+      badge.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg> Script is outdated — click Regenerate to update';
+      os.appendChild(badge);
+    }
+    badge.style.display = 'flex';
+  }
+  // Dim copy button
+  const copyBtn = document.getElementById('copyScriptBtn');
+  if(copyBtn){ copyBtn.style.opacity = '0.4'; copyBtn.title = 'Script is outdated — regenerate first'; }
+  _scriptUpToDate = false;
+  if(tabs && tabs[currentTab]) tabs[currentTab].scriptUpToDate = false;
+}
+
+function markScriptCurrent(){
+  _scriptUpToDate = true;
+  if(tabs && tabs[currentTab]) tabs[currentTab].scriptUpToDate = true;
   const btn = document.getElementById('generateBtn');
   if(btn){
-    const orig = btn.innerHTML;
+    btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg> Generate Script';
+    btn.style.background = '';
+    btn.style.color = '';
+    btn.style.border = '';
+  }
+  const badge = document.getElementById('scriptOutdatedBadge');
+  if(badge) badge.style.display = 'none';
+  const copyBtn = document.getElementById('copyScriptBtn');
+  if(copyBtn){ copyBtn.style.opacity = ''; copyBtn.title = ''; }
+}
+
+function generateWithFeedback(){
+  const btn = document.getElementById('generateBtn');
+  const defaultLabel = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg> Generate Script';
+  if(btn){
     btn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="animation:spin 0.6s linear infinite"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> Generating...';
     btn.disabled = true;
     setTimeout(()=>{
       generate();
-      btn.innerHTML = orig;
+      btn.innerHTML = defaultLabel;
+      btn.style.background = '';
+      btn.style.color = '';
       btn.disabled = false;
     }, 50);
     return;
@@ -957,6 +1018,10 @@ function generate(){
   }
   let script="";
   let mods="";
+  const fallbackEnabled = getFallbackEnabled();
+  const fallbackTimeout = getFallbackTimeout();
+  const fallbackEnabledAsync = getFallbackEnabledAsync();
+  const fallbackTimeoutAsync = getFallbackTimeoutAsync();
   try {
 
   t.changes.forEach(ch=>{
@@ -997,6 +1062,7 @@ ${_reqBodyScript}
   (()=>{
     const _info = { url: _jmPattern, target: '${interceptTarget}', mode: '${getResponseMode()}' };
     ${rulesEnabled && rules.length > 0 ? `_info.rules = ${rules.length};` : ''}
+    ${fallbackEnabled ? `_info.fallback = '${fallbackTimeout}s';` : ''}
     console.log('%c⚡ JediMock active', 'color:#00D4FF;font-weight:bold;font-size:12px', _info);
   })();
 
@@ -1074,6 +1140,31 @@ ${mods}
     }
     return _xhrSend.apply(this, arguments);
   };
+${fallbackEnabled ? `
+  // ── FALLBACK: if request never responds, return mock ──
+  const _jmFallbackMs = ${fallbackTimeout * 1000};
+  const _jmOrigFetch = window.fetch;
+  window.fetch = async function(url, options={}) {
+    if(typeof url !== 'string' || !(${_urlMatch})) return _jmOrigFetch(url, options);
+    try {
+      const res = await Promise.race([
+        _jmOrigFetch(url, options),
+        new Promise((_, rej) => setTimeout(() => rej(new Error('jm_timeout')), _jmFallbackMs))
+      ]);
+      return res;
+    } catch(e) {
+      if(e.message === 'jm_timeout' || e.message === 'Failed to fetch' || e.name === 'TypeError') {
+        console.log('%c⚡ JediMock fallback', 'color:#00D4FF;font-weight:bold;font-size:12px', { url, reason: e.message, tab: _jmTab });
+        const _fbData = ${JSON.stringify(t.data)};
+${mods.split("\n").join("\n        ")}
+        return new Response(JSON.stringify(_fbData), {
+          status: ${t.statusCode||200},
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+      throw e;
+    }
+  };` : ``}
 })();`;
   }
 
@@ -1152,6 +1243,7 @@ hasPathStar ? `    const m = url.match(new RegExp("${pathPattern}"));
   console.log('%c⚡ JediMock active', 'color:#00D4FF;font-weight:bold;font-size:12px', {
     url: ${JSON.stringify(triggerUrl)}, mode: 'Async ID',
     trigger: '${t.asyncTriggerMethod||"POST"}', response: ${JSON.stringify(t.asyncResponseUrl||'')}
+    ${fallbackEnabledAsync ? `, fallback: '${fallbackTimeoutAsync}s'` : ''}
   });
 
   // ── UNIFIED ASYNC (patches both fetch AND XHR) ──
@@ -1217,6 +1309,52 @@ ${mods}
     }
     return _xhrSend.apply(this, arguments);
   };
+${fallbackEnabledAsync ? `
+  // ── ASYNC FALLBACK: if response never comes, construct URL from pattern + captured ID ──
+  const _jmAsyncFallbackMs = ${fallbackTimeoutAsync * 1000};
+  const _jmAsyncOrig = window.fetch;
+  window.fetch = async function(url, options={}) {
+    // On trigger: capture ID as normal (already done above)
+    if(typeof url === 'string' && url.includes("${triggerUrl}") && (options.method||'GET').toUpperCase() === "${triggerMethod}") {
+      return _jmAsyncOrig(url, options);
+    }
+    // On response URL: race against timeout
+    if(typeof url === 'string' && _matchesResponseUrl(url) && (options.method||'GET').toUpperCase() === "${responseMethod}") {
+      try {
+        const res = await Promise.race([
+          _jmAsyncOrig(url, options),
+          new Promise((_, rej) => setTimeout(() => rej(new Error('jm_timeout')), _jmAsyncFallbackMs))
+        ]);
+        return res;
+      } catch(e) {
+        if(e.message === 'jm_timeout' || e.message === 'Failed to fetch' || e.name === 'TypeError') {
+          const id = _capturedId ?? _extractIdFromUrl(url);
+          const data = JSON.parse(JSON.stringify(_mockData));
+          if(id !== null) replaceIdInObject(data, _placeholderId, id);
+          console.log('%c⚡ JediMock [Async] fallback', 'color:#00D4FF;font-weight:bold;font-size:12px', { url, id, reason: e.message });
+          return new Response(JSON.stringify(data), {
+            status: ${t.statusCode||200},
+            headers: { 'Content-Type': 'application/json' }
+          });
+        }
+        throw e;
+      }
+    }
+    return _jmAsyncOrig(url, options);
+  };
+  // FALLBACK TIMER: if response URL never fires at all, fire mock after timeout using captured ID
+  setTimeout(() => {
+    if(_capturedId === null) return; // no trigger fired yet
+    const responsePattern = "${responseUrl}";
+    const constructedUrl = responsePattern.replace('*', _capturedId);
+    const data = JSON.parse(JSON.stringify(_mockData));
+    replaceIdInObject(data, _placeholderId, _capturedId);
+    console.log('%c⚡ JediMock [Async] fallback timer', 'color:#00D4FF;font-weight:bold;font-size:12px', { constructedUrl, id: _capturedId });
+    // Dispatch a custom event so app code listening can react
+    window.dispatchEvent(new CustomEvent('jm-async-fallback', {
+      detail: { url: constructedUrl, data, id: _capturedId }
+    }));
+  }, _jmAsyncFallbackMs);` : ``}
 })();`;
   }
 
@@ -1270,6 +1408,7 @@ ${mods}
   output.textContent=script;
   // Populate meta info card
   _jmBuildMeta(t, typeof interceptTarget!=='undefined'?interceptTarget:'response', getResponseMode(), rulesEnabled, rules);
+  markScriptCurrent();
   updateVisibility();
   } catch(e) {
     // Generate failed — show visible error
@@ -1344,13 +1483,12 @@ function importConfig(event){
 function copyScript(){
   const raw=(document.getElementById("output")||{}).textContent||"";
   if(!raw){ edFlash('⚠ Generate a script first', 'var(--red)'); return; }
-  const text = typeof _jmObfuscate==='function' ? _jmObfuscate(raw) : raw;
   if(navigator.clipboard && window.isSecureContext){
-    navigator.clipboard.writeText(text)
+    navigator.clipboard.writeText(raw)
       .then(()=>flashCopy())
-      .catch(()=>fallbackCopy(text, raw));
+      .catch(()=>fallbackCopy(raw, raw));
   } else {
-    fallbackCopy(text, raw);
+    fallbackCopy(raw, raw);
   }
 }
 
@@ -1405,6 +1543,8 @@ function flashCopy(){
 }
 
 function resetAll(){
+  markScriptCurrent();
+  _scriptUpToDate = false;
   tabs[currentTab]={name:"Tab "+(currentTab+1),data:{},changes:[],deletions:[],additions:[],url:"",mode:"fetch",asyncProtocol:"off",rawJson:"",script:"",asyncTriggerMethod:"POST",asyncTriggerUrl:"",asyncResponseMethod:"GET",asyncResponseUrl:"",asyncIdField:"",asyncCaptureField:"",firestoreField:"",firestoreValue:""};
   data={};
   changes=[];
@@ -4530,7 +4670,62 @@ function clearPersistedSession(){
 let rules = [];        // rules for current tab
 let rulesEnabled = false;
 
+function onFallbackChange(){
+  markScriptOutdated();
+  const cb = document.getElementById('fallbackEnabled');
+  const inp = document.getElementById('fallbackTimeout');
+  const staticLabel = document.getElementById('fallbackTimeoutStatic');
+  const hint = document.getElementById('fallbackAsyncHint');
+  const isAsync = (document.querySelector('input[name="asyncMode"]:checked')?.value||'off') !== 'off';
+  const wrap = document.getElementById('fallbackTimeoutWrap');
+  const sLabel = document.getElementById('fallbackSecondsLabel');
+  if(wrap) wrap.style.display = cb && cb.checked ? 'flex' : 'none';
+  if(sLabel) sLabel.style.display = cb && cb.checked ? 'inline' : 'none';
+  if(staticLabel) staticLabel.style.display = cb && cb.checked ? 'none' : 'inline';
+  if(hint) hint.style.display = (cb && cb.checked && isAsync) ? 'block' : 'none';
+  saveState();
+}
+
+function updateFallbackRowVisibility(){
+  const row = document.getElementById('fallbackRow');
+  if(!row) return;
+  const target = getInterceptTarget();
+  const isRequestOnly = target === 'request';
+  row.style.display = isRequestOnly ? 'none' : 'flex';
+}
+
+function onFallbackChangeAsync(){
+  markScriptOutdated();
+  const cb = document.getElementById('fallbackEnabledAsync');
+  const wrap2 = document.getElementById('fallbackTimeoutWrapAsync');
+  const sLabelA = document.getElementById('fallbackSecondsLabelAsync');
+  const staticLabel = document.getElementById('fallbackTimeoutStaticAsync');
+  const hint = document.getElementById('fallbackAsyncHint');
+  if(wrap2) wrap2.style.display = cb && cb.checked ? 'flex' : 'none';
+  if(sLabelA) sLabelA.style.display = cb && cb.checked ? 'inline' : 'none';
+  if(staticLabel) staticLabel.style.display = cb && cb.checked ? 'none' : 'inline';
+  if(hint) hint.style.display = cb && cb.checked ? 'block' : 'none';
+  saveState();
+}
+
+function getFallbackEnabledAsync(){
+  return document.getElementById('fallbackEnabledAsync')?.checked || false;
+}
+
+function getFallbackTimeoutAsync(){
+  return parseInt(document.getElementById('fallbackTimeoutAsync')?.value || '30', 10);
+}
+
+function getFallbackEnabled(){
+  return document.getElementById('fallbackEnabled')?.checked || false;
+}
+
+function getFallbackTimeout(){
+  return parseInt(document.getElementById('fallbackTimeout')?.value || '30', 10);
+}
+
 function onRulesToggle(){
+  markScriptOutdated();
   rulesEnabled = document.getElementById('rulesEnabled').checked;
   renderRules();
   // Update active badge
@@ -4787,7 +4982,8 @@ function onTargetChange(){
 
   // Response mode toggle — only relevant when target includes response
   const responseModeToggle = document.getElementById('responseModeToggle');
-  if(responseModeToggle) responseModeToggle.style.display = includesResponse ? 'flex' : 'none';
+  const _isAsyncNow = (document.querySelector('input[name="asyncMode"]:checked')?.value||'off') !== 'off';
+  if(responseModeToggle) responseModeToggle.style.display = (!_isAsyncNow && includesResponse) ? 'flex' : 'none';
 
   // Viewer/options/rules — only show when target includes response AND data loaded
   const viewerCard = document.getElementById('viewerCard');
@@ -4811,6 +5007,7 @@ function onTargetChange(){
   }
 
   updateVisibility();
+  updateFallbackRowVisibility();
   persistSession();
 }
 
@@ -4845,6 +5042,17 @@ function loadTargetFromTab(){
   reqDeletions = (t && t.reqDeletions) || [];
   reqAdditions = (t && t.reqAdditions) || [];
   reqCollapsed = (t && t.reqCollapsed) || {};
+  const _fbEl = document.getElementById('fallbackEnabled');
+  const _ftEl = document.getElementById('fallbackTimeout');
+  if(_fbEl) _fbEl.checked = (t && t.fallbackEnabled) || false;
+  if(_ftEl) _ftEl.value = (t && t.fallbackTimeout) || 30;
+  onFallbackChange();
+  updateFallbackRowVisibility();
+  const _fbaEl = document.getElementById('fallbackEnabledAsync');
+  const _ftaEl = document.getElementById('fallbackTimeoutAsync');
+  if(_fbaEl) _fbaEl.checked = (t && t.fallbackEnabledAsync) || false;
+  if(_ftaEl) _ftaEl.value = (t && t.fallbackTimeoutAsync) || 30;
+  onFallbackChangeAsync();
   if(reqData && Object.keys(reqData).length > 0){
     renderReqTree();
     const vc = document.getElementById('reqViewerCard');
@@ -4852,6 +5060,17 @@ function loadTargetFromTab(){
     updateReqChangesBadge();
   }
   onTargetChange();
+  // Restore scriptUpToDate AFTER onTargetChange to prevent it being overridden
+  if(t && t.scriptUpToDate === true && t.script){
+    _loadingState = false;
+    markScriptCurrent();
+  } else if(t && t.scriptUpToDate === false && t.script){
+    _loadingState = false;
+    markScriptOutdated();
+  } else {
+    _loadingState = false;
+    markScriptCurrent();
+  }
 }
 
 /* end intercept target */
@@ -4861,12 +5080,13 @@ function loadTargetFromTab(){
    REQUEST BODY EDITOR — mirrors response editor
    ════════════════════════════════════════════════════════ */
 
+let _scriptUpToDate = false; // tracks if generated script matches current config
+let _loadingState = false;   // prevents markScriptOutdated during tab/state load
 let reqData = {};        // parsed request body
 let reqChanges = [];     // field edits
 let reqDeletions = [];   // deleted fields
 let reqAdditions = [];   // added fields
 let reqCollapsed = {};   // collapsed state for req tree
-
 function loadReqJson(){
   const ta = document.getElementById('requestBodyInput');
   const errEl = document.getElementById('requestBodyError');
@@ -4882,6 +5102,7 @@ function loadReqJson(){
     const vc = document.getElementById('reqViewerCard');
     if(vc) vc.classList.remove('hidden');
     updateReqChangesBadge();
+    markScriptOutdated();
     // Show generate button
     onTargetChange();
   } catch(e) {
@@ -4998,6 +5219,7 @@ function showAddReqForm(obj, path, parent){
 /* end request tree helpers */
 
 function updateReqChangesBadge(){
+  if(reqChanges.length > 0 || reqDeletions.length > 0 || reqAdditions.length > 0) markScriptOutdated();
   const badge = document.getElementById('reqChangesBadge');
   const panel = document.getElementById('reqDiffPanel');
   const list  = document.getElementById('reqDiffList');
@@ -5681,6 +5903,8 @@ function _jmBuildMeta(t, target, responseMode, rulesEnabled, rules){
     lines.push(`<span style="color:var(--text-dim)">Mode</span> &nbsp; Async ID`);
     lines.push(`<span style="color:var(--text-dim)">Trigger</span> &nbsp; <code style="color:var(--accent)">${t.asyncTriggerMethod||'POST'} ${t.asyncTriggerUrl||'—'}</code>`);
     lines.push(`<span style="color:var(--text-dim)">Response URL</span> &nbsp; <code style="color:var(--accent)">${t.asyncResponseUrl||'—'}</code>`);
+    if(t.fallbackEnabledAsync)
+      lines.push(`<span style="color:var(--text-dim)">Fallback</span> &nbsp; <span style="color:var(--accent);font-weight:600">${t.fallbackTimeoutAsync||30}s</span>`);
   } else {
     lines.push(`<span style="color:var(--text-dim)">URL pattern</span> &nbsp; <code style="color:var(--accent)">${t.url||'—'}</code>`);
     lines.push(`<span style="color:var(--text-dim)">Target</span> &nbsp; ${target.charAt(0).toUpperCase()+target.slice(1)}`);
@@ -5691,6 +5915,8 @@ function _jmBuildMeta(t, target, responseMode, rulesEnabled, rules){
     if(rulesEnabled && rules.length > 0)
       lines.push(`<span style="color:var(--text-dim)">Rules</span> &nbsp; <span style="color:var(--accent);font-weight:600">${rules.length} active</span>`);
     lines.push(`<span style="color:var(--text-dim)">Status</span> &nbsp; ${t.statusCode||200}${t.responseDelay>0?' · '+t.responseDelay+'ms delay':''}`);
+    if(t.fallbackEnabled)
+      lines.push(`<span style="color:var(--text-dim)">Fallback</span> &nbsp; <span style="color:var(--accent);font-weight:600">${t.fallbackTimeout||30}s</span>`);
   }
 
   meta.innerHTML = lines.join('<br>');

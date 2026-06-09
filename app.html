@@ -5,7 +5,6 @@
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMiAzMiI+PHJlY3Qgd2lkdGg9IjMyIiBoZWlnaHQ9IjMyIiByeD0iNyIgZmlsbD0iIzBkMTAxOCIvPjxwb2x5Z29uIHBvaW50cz0iMTksMyAxMSwxNiAxNywxNiAxMywyOSAyMywxNCAxNywxNCIgZmlsbD0iIzAwRDRGRiIvPjxyZWN0IHg9IjEwIiB5PSIyNCIgd2lkdGg9IjEyIiBoZWlnaHQ9IjIuNSIgcng9IjEuMjUiIGZpbGw9IiMwMEQ0RkYiIG9wYWNpdHk9IjAuNDUiLz48L3N2Zz4=">
 <title>JediMock Suite — API Mock Generator</title>
 <meta name="description" content="JediMock Suite: generate fetch/XHR mock scripts, validate and beautify JSON, and compare diffs — all in one tool.">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚡</text></svg>">
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -245,6 +244,7 @@
         <button class="tab-jump-btn" id="tabJumpBtn" onclick="toggleDropdown()">☰ Jump to tab <span id="tabJumpArrow">▲</span></button>
         <div class="tab-dropdown hidden" id="tabDropdown"></div>
       </div>
+
     </div>
   </div>
 
@@ -252,16 +252,16 @@
   <div class="card" style="position:relative">
     <button onclick="resetAll()" class="btn-ghost" style="position:absolute;top:10px;right:12px">↺ Reset</button>
     <!-- hidden radios keep existing JS logic intact -->
-    <input type="radio" name="mode" value="fetch" id="modeFetch" checked onchange="onModeChange()" style="display:none">
-    <input type="radio" name="asyncMode" value="xhr" id="asyncXhr" onchange="onModeChange()" style="display:none">
+    <input type="radio" name="mode" value="fetch" id="modeFetch" checked onchange="onModeChange();markScriptOutdated()" style="display:none">
+    <input type="radio" name="asyncMode" value="xhr" id="asyncXhr" onchange="onModeChange();markScriptOutdated()" style="display:none">
     <div style="display:inline-flex;gap:20px;align-items:start;flex-wrap:wrap">
       <!-- Mode -->
       <div style="display:flex;flex-direction:column;gap:6px">
         <span class="card-label" style="margin-bottom:0">Mode</span>
         <div class="radio-pill" id="interceptPill">
-          <input type="radio" name="asyncMode" value="off" id="asyncOff" checked onchange="onModeChange()">
+          <input type="radio" name="asyncMode" value="off" id="asyncOff" checked onchange="onModeChange();markScriptOutdated()">
           <label for="asyncOff">Intercept</label>
-          <input type="radio" name="asyncMode" value="fetch" id="asyncFetch" onchange="onModeChange()">
+          <input type="radio" name="asyncMode" value="fetch" id="asyncFetch" onchange="onModeChange();markScriptOutdated()">
           <label for="asyncFetch">Async ID</label>
         </div>
       </div>
@@ -269,11 +269,11 @@
       <div id="targetGroup" style="display:flex;flex-direction:column;gap:6px">
         <span class="card-label" style="margin-bottom:0">Target</span>
         <div class="radio-pill">
-          <input type="radio" name="interceptTarget" value="response" id="targetResponse" checked onchange="onTargetChange()">
+          <input type="radio" name="interceptTarget" value="response" id="targetResponse" checked onchange="onTargetChange();markScriptOutdated()">
           <label for="targetResponse">Response</label>
-          <input type="radio" name="interceptTarget" value="request" id="targetRequest" onchange="onTargetChange()">
+          <input type="radio" name="interceptTarget" value="request" id="targetRequest" onchange="onTargetChange();markScriptOutdated()">
           <label for="targetRequest">Request</label>
-          <input type="radio" name="interceptTarget" value="both" id="targetBoth" onchange="onTargetChange()">
+          <input type="radio" name="interceptTarget" value="both" id="targetBoth" onchange="onTargetChange();markScriptOutdated()">
           <label for="targetBoth">Both</label>
         </div>
       </div>
@@ -286,7 +286,22 @@
       <span class="card-label" style="margin-bottom:0">API URL contains</span>
       <button class="btn-ghost" onclick="toggleCurlImport()" id="curlToggleBtn" style="font-size:11px;padding:3px 8px" title="Import from cURL command">⌨ Import cURL</button>
     </div>
-    <input id="urlInput" type="text" placeholder="e.g. /api/users/* or /api/users" oninput="updateTabName();persistSession()">
+    <input id="urlInput" type="text" placeholder="e.g. /api/users/* or /api/users" oninput="updateTabName();persistSession();markScriptOutdated()">
+    <div id="fallbackRow" style="display:none;align-items:center;gap:8px;margin-top:10px;padding-top:10px;border-top:1px solid var(--border);white-space:nowrap">
+      <input type="checkbox" id="fallbackEnabled" onchange="onFallbackChange()" style="width:13px;height:13px;accent-color:var(--accent);flex-shrink:0">
+      <span style="font-size:12px;font-weight:500;color:var(--text)">Fallback mode</span>
+      <span style="font-size:11px;color:var(--text-muted)">— if no response after</span>
+      <div class="delay-wrapper delay-wrapper-sm" id="fallbackTimeoutWrap" style="display:none;width:80px">
+        <input type="number" id="fallbackTimeout" value="30" min="1" max="300" step="1" onchange="saveState()">
+        <div class="delay-btn">
+          <button onclick="document.getElementById('fallbackTimeout').stepUp();saveState();" title="Increase">▲</button>
+          <button onclick="document.getElementById('fallbackTimeout').stepDown();saveState();" title="Decrease">▼</button>
+        </div>
+      </div>
+      <span id="fallbackSecondsLabel" style="font-size:11px;color:var(--text-muted);display:none">s</span>
+      <span id="fallbackTimeoutStatic" style="font-size:11px;color:var(--text-dim)">30s</span>
+      <span style="font-size:11px;color:var(--text-muted)">, return mock</span>
+    </div>
     <!-- cURL import area -->
     <div class="curl-import-area" id="curlImportArea">
       <div style="font-size:11px;color:var(--text-muted);margin-bottom:2px">Paste a cURL command — URL and JSON will be auto-extracted</div>
@@ -305,9 +320,9 @@
       <div class="row-gap">
         <span class="card-label" style="margin-bottom:0">Request body</span>
         <div class="radio-pill" style="margin-left:8px">
-          <input type="radio" name="requestMode" value="merge" id="requestMerge" checked onchange="onRequestModeChange()">
+          <input type="radio" name="requestMode" value="merge" id="requestMerge" checked onchange="onRequestModeChange();markScriptOutdated()">
           <label for="requestMerge">Merge changes</label>
-          <input type="radio" name="requestMode" value="replace" id="requestReplace" onchange="onRequestModeChange()">
+          <input type="radio" name="requestMode" value="replace" id="requestReplace" onchange="onRequestModeChange();markScriptOutdated()">
           <label for="requestReplace">Replace entirely</label>
         </div>
       </div>
@@ -354,23 +369,42 @@
     <div class="async-grid">
       <div class="async-field">
         <label>Trigger method</label>
-        <select id="asyncTriggerMethod">
+        <select id="asyncTriggerMethod" onchange="markScriptOutdated()">
           <option>POST</option><option>GET</option><option>PUT</option><option>PATCH</option><option>DELETE</option>
         </select>
       </div>
       <div class="async-field">
         <label>Trigger URL contains</label>
-        <input id="asyncTriggerUrl" type="text" placeholder="e.g. /api/jobs/start" oninput="updateTabName()">
+        <input id="asyncTriggerUrl" type="text" placeholder="e.g. /api/jobs/start" oninput="updateTabName();markScriptOutdated()">
       </div>
       <div class="async-field">
         <label>Response method</label>
-        <select id="asyncResponseMethod">
+        <select id="asyncResponseMethod" onchange="markScriptOutdated()">
           <option>GET</option><option>POST</option><option>PUT</option><option>PATCH</option><option>DELETE</option>
         </select>
       </div>
       <div class="async-field">
         <label>Response URL pattern</label>
-        <input id="asyncResponseUrl" type="text" placeholder="e.g. /api/jobs/*/status or /api/jobs/status?id=*" oninput="updateTabName()">
+        <input id="asyncResponseUrl" type="text" placeholder="e.g. /api/jobs/*/status or /api/jobs/status?id=*" oninput="updateTabName();markScriptOutdated()">
+        <div id="fallbackAsyncHint" class="async-hint" style="display:none;margin-top:6px;color:var(--accent)">
+          ⚠ Fallback mode requires the full response URL pattern — the * will be replaced with the captured ID.
+        </div>
+      </div>
+      <!-- Fallback row for async mode -->
+      <div id="fallbackRowAsync" style="display:flex;align-items:center;gap:8px;margin-top:10px;padding-top:10px;border-top:1px solid var(--border);white-space:nowrap">
+        <input type="checkbox" id="fallbackEnabledAsync" onchange="onFallbackChangeAsync()" style="width:13px;height:13px;accent-color:var(--accent);flex-shrink:0">
+        <span style="font-size:12px;font-weight:500;color:var(--text)">Fallback mode</span>
+        <span style="font-size:11px;color:var(--text-muted)">— if no response after</span>
+        <div class="delay-wrapper delay-wrapper-sm" id="fallbackTimeoutWrapAsync" style="display:none;width:80px">
+            <input type="number" id="fallbackTimeoutAsync" value="30" min="1" max="300" step="1" onchange="saveState()">
+            <div class="delay-btn">
+              <button onclick="document.getElementById('fallbackTimeoutAsync').stepUp();saveState();" title="Increase">▲</button>
+              <button onclick="document.getElementById('fallbackTimeoutAsync').stepDown();saveState();" title="Decrease">▼</button>
+            </div>
+          </div>
+          <span id="fallbackSecondsLabelAsync" style="font-size:11px;color:var(--text-muted);display:none">s</span>
+        <span id="fallbackTimeoutStaticAsync" style="font-size:11px;color:var(--text-dim)">30s</span>
+        <span style="font-size:11px;color:var(--text-muted)">, return mock</span>
       </div>
     </div>
     <div class="id-field-selector">
@@ -386,11 +420,11 @@
       <div class="firestore-row">
         <div class="async-field">
           <label>Field name</label>
-          <input id="firestoreField" type="text" placeholder="e.g. status">
+          <input id="firestoreField" oninput="markScriptOutdated()" type="text" placeholder="e.g. status">
         </div>
         <div class="async-field">
           <label>Value</label>
-          <input id="firestoreValue" type="text" placeholder="e.g. completed">
+          <input id="firestoreValue" oninput="markScriptOutdated()" type="text" placeholder="e.g. completed">
         </div>
       </div>
     </div>
@@ -409,9 +443,9 @@
       <div class="row-gap">
         <span class="card-label" style="margin-bottom:0" id="jsonCardLabel">Response JSON</span>
         <div class="radio-pill" id="responseModeToggle" style="margin-left:8px">
-          <input type="radio" name="responseMode" value="merge" id="responseMerge" checked onchange="onResponseModeChange()">
+          <input type="radio" name="responseMode" value="merge" id="responseMerge" checked onchange="onResponseModeChange();markScriptOutdated()">
           <label for="responseMerge">Merge changes</label>
-          <input type="radio" name="responseMode" value="replace" id="responseReplace" onchange="onResponseModeChange()">
+          <input type="radio" name="responseMode" value="replace" id="responseReplace" onchange="onResponseModeChange();markScriptOutdated()">
           <label for="responseReplace">Replace entirely</label>
         </div>
       </div>
@@ -745,11 +779,11 @@
             style="flex:1;height:38px;resize:none;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:0 10px;color:var(--text);font-family:'SF Mono','Fira Code',monospace;font-size:12px;outline:none;overflow:hidden;line-height:38px;box-sizing:border-box"></textarea>
         </div>
         <!-- Right col: action buttons — aligns with Toolbox panel -->
-        <div style="display:flex;gap:4px;align-items:center;justify-content:flex-start">
-          <button class="btn-ghost" onclick="edSendToValidator()">✓ Validate</button>
-          <button class="btn-ghost" onclick="edSendToBeautifier()">✨ Beautify</button>
-          <button class="btn-ghost" id="edFullscreenBtn" onclick="toggleEditorFullscreen()"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg> Fullscreen</button>
-          <button class="btn-ghost" onclick="edClear()"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg> Clear</button>
+        <div style="display:flex;gap:4px;align-items:center;justify-content:flex-end;flex-wrap:nowrap;min-width:0">
+          <button class="btn-ghost" onclick="edSendToValidator()" style="padding:6px 8px;font-size:12px;white-space:nowrap">✓ Validate</button>
+          <button class="btn-ghost" onclick="edSendToBeautifier()" style="padding:6px 8px;font-size:12px;white-space:nowrap">✨ Beautify</button>
+          <button class="btn-ghost" id="edFullscreenBtn" onclick="toggleEditorFullscreen()" style="padding:6px 8px;font-size:12px;white-space:nowrap"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg> Fullscreen</button>
+          <button class="btn-ghost" onclick="edClear()" style="padding:6px 8px;font-size:12px;white-space:nowrap"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg> Clear</button>
         </div>
       </div>
 
@@ -812,7 +846,7 @@
           </div>
 
           <!-- BULK TAB -->
-          <div id="edPaneBulk" style="flex:1;overflow-y:auto;display:block;padding:10px">
+          <div id="edPaneBulk" style="flex:1;overflow-y:auto;overflow-x:hidden;display:flex;flex-direction:column;gap:8px;padding:10px">
 
           <!-- SCOPE -->
           <div class="toolbox-card">
@@ -841,10 +875,22 @@
                 <button class="scope-btn active" id="edGenTypeObj" onclick="edSetGenType('object')">{ } Object</button>
                 <button class="scope-btn" id="edGenTypeArr" onclick="edSetGenType('array')">[ ] Array</button>
               </div>
-              <div style="display:grid;grid-template-columns:1fr 60px 60px;gap:6px;margin-bottom:6px;align-items:center">
+              <div style="display:grid;grid-template-columns:1fr auto auto;gap:6px;margin-bottom:6px;align-items:center">
                 <input class="toolbox-input" id="edGenPrefix" placeholder='Prefix e.g. "block"' spellcheck="false">
-                <input class="toolbox-input" id="edGenFrom" type="number" value="1" min="1" title="Start" style="text-align:center">
-                <input class="toolbox-input" id="edGenTo" type="number" value="10" min="1" title="End" style="text-align:center">
+                <div class="delay-wrapper delay-wrapper-sm" style="width:72px">
+                  <input class="toolbox-input" id="edGenFrom" type="number" value="1" min="1" title="Start" style="text-align:center;border:none;border-radius:0;padding:4px 4px 4px 8px;font-size:12px;background:var(--surface2)">
+                  <div class="delay-btn">
+                    <button onclick="var e=document.getElementById('edGenFrom');e.stepUp();e.dispatchEvent(new Event('input'))" title="Increase">▲</button>
+                    <button onclick="var e=document.getElementById('edGenFrom');e.stepDown();e.dispatchEvent(new Event('input'))" title="Decrease">▼</button>
+                  </div>
+                </div>
+                <div class="delay-wrapper delay-wrapper-sm" style="width:72px">
+                  <input class="toolbox-input" id="edGenTo" type="number" value="10" min="1" title="End" style="text-align:center;border:none;border-radius:0;padding:4px 4px 4px 8px;font-size:12px;background:var(--surface2)">
+                  <div class="delay-btn">
+                    <button onclick="var e=document.getElementById('edGenTo');e.stepUp();e.dispatchEvent(new Event('input'))" title="Increase">▲</button>
+                    <button onclick="var e=document.getElementById('edGenTo');e.stepDown();e.dispatchEvent(new Event('input'))" title="Decrease">▼</button>
+                  </div>
+                </div>
               </div>
               <div style="font-size:11px;color:var(--text-dim);margin-bottom:8px">From <strong id="edGenFromLabel">1</strong> to <strong id="edGenToLabel">10</strong> → <strong id="edGenCountLabel">10</strong> blocks</div>
               <div style="display:flex;flex-direction:column;gap:4px;margin-bottom:8px;padding:8px;background:var(--surface2);border-radius:6px;border:1px solid var(--border)">
@@ -1021,39 +1067,26 @@
           </div><!-- /bulk pane -->
 
           <!-- ANALYTICS TAB -->
-          <div id="edPaneAnalytics" style="flex:1;overflow-y:auto;display:none;padding:10px">
-            <div class="toolbox-card">
-              <div class="toolbox-card-header">📊 Data Analysis</div>
-              <div class="toolbox-body">
-                <button class="toolbox-btn" onclick="edRunAnalytics()" style="width:100%;margin-bottom:8px">▶ Run Analysis</button>
-                <div id="edAnalyticsOut" style="font-size:12px;color:var(--text-muted)">Load JSON and click Run Analysis.</div>
-              </div>
-            </div>
+          <div id="edPaneAnalytics" style="flex:1;overflow-y:auto;display:none;padding:12px;flex-direction:column;gap:10px">
+            <button class="toolbox-btn" onclick="edRunAnalytics()">▶ Run Analysis</button>
+            <div id="edAnalyticsOut" style="font-size:12px;color:var(--text-muted);line-height:1.6">Load JSON and click Run Analysis.</div>
           </div>
 
           <!-- SCHEMA TAB -->
-          <div id="edPaneSchema" style="flex:1;overflow-y:auto;display:none;padding:10px">
-            <div class="toolbox-card">
-              <div class="toolbox-card-header">🧬 Schema</div>
-              <div class="toolbox-body">
-                <button class="toolbox-btn" onclick="edDetectSchema()" style="width:100%;margin-bottom:8px">▶ Detect Schema</button>
-                <button class="toolbox-btn neutral" onclick="edCopySchema(this)" style="width:100%;margin-bottom:8px">⎘ Copy Schema</button>
-                <pre id="edSchemaOut" style="font-size:11px;color:var(--text-muted);white-space:pre-wrap;word-break:break-all;margin-top:4px;max-height:300px;overflow:auto">Click Detect Schema to generate a JSON Schema.</pre>
-              </div>
-            </div>
+          <div id="edPaneSchema" style="flex:1;overflow-y:auto;display:none;padding:12px;flex-direction:column;gap:8px">
+            <button class="toolbox-btn" onclick="edDetectSchema()">▶ Detect Schema</button>
+            <button class="toolbox-btn neutral" onclick="edCopySchema(this)">⎘ Copy Schema</button>
+            <pre id="edSchemaOut" style="font-size:11px;color:var(--text-muted);white-space:pre-wrap;word-break:break-all;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:10px;flex:1;overflow:auto;margin:0">Click Detect Schema to generate a JSON Schema.</pre>
           </div>
 
           <!-- HISTORY TAB -->
-          <div id="edPaneHistory" style="flex:1;overflow-y:auto;display:none;padding:10px">
-            <div class="toolbox-card">
-              <div class="toolbox-card-header">⏱ History
-                <button class="toolbox-btn neutral" onclick="edUndo()" style="margin-left:auto;padding:2px 10px;font-size:11px">↩ Undo</button>
-              </div>
-              <div style="padding:8px">
-                <div class="history-list" id="edHistory">
-                  <div class="history-empty">No operations yet</div>
-                </div>
-              </div>
+          <div id="edPaneHistory" style="flex:1;overflow-y:auto;display:none;padding:12px;flex-direction:column;gap:8px">
+            <div style="display:flex;align-items:center;justify-content:space-between">
+              <span style="font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted)">⏱ History</span>
+              <button class="toolbox-btn neutral" onclick="edUndo()" style="width:auto;padding:4px 12px;font-size:11px">↩ Undo</button>
+            </div>
+            <div class="history-list" id="edHistory">
+              <div class="history-empty">No operations yet</div>
             </div>
           </div>
 
