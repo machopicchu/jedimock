@@ -9,6 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
 <link rel="stylesheet" href="styles.css">
 </head>
 
@@ -38,8 +39,8 @@
       <div class="onboarding-step">
         <div class="onboarding-step-num">2</div>
         <div class="onboarding-step-text">
-          <strong>Paste your JSON response</strong><br>
-          <span>Open DevTools Network tab, find the API call you want to mock, copy the response JSON and paste it — then click Load JSON.</span>
+          <strong>Choose your target &amp; paste JSON</strong><br>
+          <span>Pick <strong>Response</strong>, <strong>Request</strong>, or <strong>Both</strong>. Paste your JSON and click Load JSON — or use <strong>Import cURL</strong> to extract the URL and body directly from a DevTools Network tab copy.</span>
         </div>
       </div>
       <div class="onboarding-step">
@@ -53,7 +54,14 @@
         <div class="onboarding-step-num">4</div>
         <div class="onboarding-step-text">
           <strong>Generate & paste the script</strong><br>
-          <span>Click Generate Script, copy it, then paste into your browser's DevTools console. Every matching request now returns your mock response automatically.</span>
+          <span>Click Generate Script, copy it, then paste into your browser's DevTools console. Every matching request is intercepted automatically. Refresh the page to deactivate.</span>
+        </div>
+      </div>
+      <div class="onboarding-step">
+        <div class="onboarding-step-num">5</div>
+        <div class="onboarding-step-text">
+          <strong>Power features</strong><br>
+          <span>Use <strong>Response Rules</strong> to return different responses per call count. Enable <strong>Fallback mode</strong> to return your mock if the server never responds. Try <strong>Async ID mode</strong> for job polling or webhook flows.</span>
         </div>
       </div>
     </div>
@@ -82,6 +90,7 @@
       <div class="shortcuts-section-title">Mock Tool</div>
       <div class="shortcut-row"><span class="shortcut-label">New tab</span><span class="shortcut-keys"><span class="kbd">Ctrl</span><span class="kbd">T</span></span></div>
       <div class="shortcut-row"><span class="shortcut-label">Generate script</span><span class="shortcut-keys"><span class="kbd">Ctrl</span><span class="kbd">Enter</span></span></div>
+      <div class="shortcut-row"><span class="shortcut-label">Copy script</span><span class="shortcut-keys"><span class="kbd">Ctrl</span><span class="kbd">Shift</span><span class="kbd">C</span></span></div>
       <div class="shortcut-row"><span class="shortcut-label">Import cURL</span><span class="shortcut-keys"><span class="kbd">Ctrl</span><span class="kbd">Shift</span><span class="kbd">V</span></span></div>
     </div>
     <div class="shortcuts-section">
@@ -190,7 +199,7 @@
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
           Export config
         </button>
-        <button onclick="shareTab()" id="shareBtn" class="sidebar-footer-btn">
+        <button onclick="shareTab()" id="shareBtn" data-tooltip="Compress the current tab config into a shareable URL" class="sidebar-footer-btn">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
           Share tab
         </button>
@@ -260,9 +269,9 @@
         <span class="card-label" style="margin-bottom:0">Mode</span>
         <div class="radio-pill" id="interceptPill">
           <input type="radio" name="asyncMode" value="off" id="asyncOff" checked onchange="onModeChange();markScriptOutdated()">
-          <label for="asyncOff">Intercept</label>
+          <label for="asyncOff" data-tooltip-pos="right" data-tooltip="Intercept fetch and XHR requests — return your mock JSON directly">Intercept</label>
           <input type="radio" name="asyncMode" value="fetch" id="asyncFetch" onchange="onModeChange();markScriptOutdated()">
-          <label for="asyncFetch">Async ID</label>
+          <label for="asyncFetch" data-tooltip-pos="right" data-tooltip="Capture a dynamic ID from a trigger request and inject it into a different URL's response">Async ID</label>
         </div>
       </div>
       <!-- Target -->
@@ -270,11 +279,11 @@
         <span class="card-label" style="margin-bottom:0">Target</span>
         <div class="radio-pill">
           <input type="radio" name="interceptTarget" value="response" id="targetResponse" checked onchange="onTargetChange();markScriptOutdated()">
-          <label for="targetResponse">Response</label>
+          <label for="targetResponse" data-tooltip-pos="right" data-tooltip="Modify what comes back from the server">Response</label>
           <input type="radio" name="interceptTarget" value="request" id="targetRequest" onchange="onTargetChange();markScriptOutdated()">
-          <label for="targetRequest">Request</label>
+          <label for="targetRequest" data-tooltip-pos="right" data-tooltip="Modify the outgoing request body before it reaches the server">Request</label>
           <input type="radio" name="interceptTarget" value="both" id="targetBoth" onchange="onTargetChange();markScriptOutdated()">
-          <label for="targetBoth">Both</label>
+          <label for="targetBoth" data-tooltip-pos="right" data-tooltip="Modify both the request body and the response in one script">Both</label>
         </div>
       </div>
     </div>
@@ -284,12 +293,12 @@
   <div class="card" id="urlCard">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
       <span class="card-label" style="margin-bottom:0">API URL contains</span>
-      <button class="btn-ghost" onclick="toggleCurlImport()" id="curlToggleBtn" style="font-size:11px;padding:3px 8px" title="Import from cURL command">⌨ Import cURL</button>
+      <button class="btn-ghost" onclick="toggleCurlImport()" id="curlToggleBtn" data-tooltip="Paste a cURL command copied from DevTools Network tab — URL and body auto-extracted" style="font-size:11px;padding:3px 8px" title="Import from cURL command">⌨ Import cURL</button>
     </div>
     <input id="urlInput" type="text" placeholder="e.g. /api/users/* or /api/users" oninput="updateTabName();persistSession();markScriptOutdated()">
     <div id="fallbackRow" style="display:none;align-items:center;gap:8px;margin-top:10px;padding-top:10px;border-top:1px solid var(--border);white-space:nowrap">
       <input type="checkbox" id="fallbackEnabled" onchange="onFallbackChange()" style="width:13px;height:13px;accent-color:var(--accent);flex-shrink:0">
-      <span style="font-size:12px;font-weight:500;color:var(--text)">Fallback mode</span>
+      <span style="font-size:12px;font-weight:500;color:var(--text)" data-tooltip-pos="right" data-tooltip="If the server never responds within the timeout, return your mock instead">Fallback mode</span>
       <span style="font-size:11px;color:var(--text-muted)">— if no response after</span>
       <div class="delay-wrapper delay-wrapper-sm" id="fallbackTimeoutWrap" style="display:none;width:80px">
         <input type="number" id="fallbackTimeout" value="30" min="1" max="300" step="1" onchange="saveState()">
@@ -298,9 +307,8 @@
           <button onclick="document.getElementById('fallbackTimeout').stepDown();saveState();" title="Decrease">▼</button>
         </div>
       </div>
-      <span id="fallbackSecondsLabel" style="font-size:11px;color:var(--text-muted);display:none">s</span>
-      <span id="fallbackTimeoutStatic" style="font-size:11px;color:var(--text-dim)">30s</span>
-      <span style="font-size:11px;color:var(--text-muted)">, return mock</span>
+      <span id="fallbackSecondsLabel" style="font-size:11px;color:var(--text-muted);display:none">s, return mock</span>
+      <span id="fallbackTimeoutStatic" style="font-size:11px;color:var(--text-dim)">30s, return mock</span>
     </div>
     <!-- cURL import area -->
     <div class="curl-import-area" id="curlImportArea">
@@ -321,9 +329,9 @@
         <span class="card-label" style="margin-bottom:0">Request body</span>
         <div class="radio-pill" style="margin-left:8px">
           <input type="radio" name="requestMode" value="merge" id="requestMerge" checked onchange="onRequestModeChange();markScriptOutdated()">
-          <label for="requestMerge">Merge changes</label>
+          <label for="requestMerge" data-tooltip-pos="right" data-tooltip="Apply your edits on top of the real request body">Merge changes</label>
           <input type="radio" name="requestMode" value="replace" id="requestReplace" onchange="onRequestModeChange();markScriptOutdated()">
-          <label for="requestReplace">Replace entirely</label>
+          <label for="requestReplace" data-tooltip-pos="right" data-tooltip="Replace the entire request body with your JSON">Replace entirely</label>
         </div>
       </div>
       <span class="toggle-icon open" id="reqBodyToggle">▼</span>
@@ -393,7 +401,7 @@
       <!-- Fallback row for async mode -->
       <div id="fallbackRowAsync" style="display:flex;align-items:center;gap:8px;margin-top:10px;padding-top:10px;border-top:1px solid var(--border);white-space:nowrap">
         <input type="checkbox" id="fallbackEnabledAsync" onchange="onFallbackChangeAsync()" style="width:13px;height:13px;accent-color:var(--accent);flex-shrink:0">
-        <span style="font-size:12px;font-weight:500;color:var(--text)">Fallback mode</span>
+        <span style="font-size:12px;font-weight:500;color:var(--text)" data-tooltip-pos="right" data-tooltip="If the response URL never arrives after the trigger, construct the URL from the captured ID and return your mock">Fallback mode</span>
         <span style="font-size:11px;color:var(--text-muted)">— if no response after</span>
         <div class="delay-wrapper delay-wrapper-sm" id="fallbackTimeoutWrapAsync" style="display:none;width:80px">
             <input type="number" id="fallbackTimeoutAsync" value="30" min="1" max="300" step="1" onchange="saveState()">
@@ -402,9 +410,8 @@
               <button onclick="document.getElementById('fallbackTimeoutAsync').stepDown();saveState();" title="Decrease">▼</button>
             </div>
           </div>
-          <span id="fallbackSecondsLabelAsync" style="font-size:11px;color:var(--text-muted);display:none">s</span>
-        <span id="fallbackTimeoutStaticAsync" style="font-size:11px;color:var(--text-dim)">30s</span>
-        <span style="font-size:11px;color:var(--text-muted)">, return mock</span>
+          <span id="fallbackSecondsLabelAsync" style="font-size:11px;color:var(--text-muted);display:none">s, return mock</span>
+        <span id="fallbackTimeoutStaticAsync" style="font-size:11px;color:var(--text-dim)">30s, return mock</span>
       </div>
     </div>
     <div class="id-field-selector">
@@ -444,9 +451,9 @@
         <span class="card-label" style="margin-bottom:0" id="jsonCardLabel">Response JSON</span>
         <div class="radio-pill" id="responseModeToggle" style="margin-left:8px">
           <input type="radio" name="responseMode" value="merge" id="responseMerge" checked onchange="onResponseModeChange();markScriptOutdated()">
-          <label for="responseMerge">Merge changes</label>
+          <label for="responseMerge" data-tooltip-pos="right" data-tooltip="Apply your edits on top of the real response — unchanged fields pass through">Merge changes</label>
           <input type="radio" name="responseMode" value="replace" id="responseReplace" onchange="onResponseModeChange();markScriptOutdated()">
-          <label for="responseReplace">Replace entirely</label>
+          <label for="responseReplace" data-tooltip-pos="right" data-tooltip="Ignore the real response entirely — return exactly your JSON">Replace entirely</label>
         </div>
       </div>
       <span class="toggle-icon open" id="jsonToggle">▼</span>
@@ -1094,6 +1101,8 @@
       </div><!-- /editor-layout -->
     </div>
   </div><!-- /panel-editor -->
+
+
 
 <script src="app.js"></script>
 </body>

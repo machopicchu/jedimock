@@ -2766,6 +2766,10 @@ document.addEventListener("keydown",(e)=>{
   if(e.key==="?" && !e.ctrlKey && !e.metaKey && !["INPUT","TEXTAREA","SELECT"].includes(document.activeElement.tagName)){
     showShortcuts(); return;
   }
+  if((e.ctrlKey||e.metaKey) && e.shiftKey && e.key==="C"){
+    const active = document.querySelector('.nav-btn.active');
+    if(active && active.id==='nav-mock'){ e.preventDefault(); copyScript(); return; }
+  }
   if((e.ctrlKey||e.metaKey) && e.shiftKey && e.key==="V"){
     e.preventDefault();
     switchTool("mock");
@@ -3590,7 +3594,7 @@ function edExpandAll(){
       const pathKey = node.dataset.pathKey;
       const depth = parseInt(node.dataset.depth||1);
       // Resolve the object at this path
-      const path = pathKey ? JSON.parse(pathKey) : [];
+      let path = []; try { path = pathKey ? JSON.parse(pathKey) : []; } catch(e) { path = []; }
       let obj = edData;
       for(const k of path) obj = obj?.[k];
       if(obj && typeof obj === 'object') edWalkShallow(obj, path, children, depth+1);
@@ -4489,7 +4493,7 @@ function edExpandToLevel(targetDepth){
         if(!children.dataset.rendered){
           children.dataset.rendered = '1';
           const pathKey = node.dataset.pathKey;
-          const path = pathKey ? JSON.parse(pathKey) : [];
+          let path = []; try { path = pathKey ? JSON.parse(pathKey) : []; } catch(e) { path = []; }
           let obj = edData;
           for(const k of path) obj = obj?.[k];
           if(obj && typeof obj === 'object') edWalkShallow(obj, path, children, depth+1);
@@ -5926,6 +5930,13 @@ function _jmBuildMeta(t, target, responseMode, rulesEnabled, rules){
 
 // Restore session or load shared tab
 if(!window.location.hash){
+  // Auto-detect OS color scheme on first visit
+  if(!localStorage.getItem('jedimock_v2')){
+    const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    if(!prefersDark){
+      document.documentElement.setAttribute('data-theme','light');
+    }
+  }
   restoreSession();
 }
 
