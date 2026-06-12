@@ -1068,7 +1068,10 @@ ${_reqBodyScript}
 
   // ── FETCH INTERCEPT ──
   window.fetch = async (url, options={}) => {
-    if (typeof url === "string" && ${_urlMatch}) {
+    // Normalize url — handle fetch(Request) and fetch(URL) patterns
+    if (url instanceof Request) { if(!options || Object.keys(options).length===0) options={}; url = url.url; }
+    else if (typeof url !== 'string') url = String(url);
+    if (${_urlMatch}) {
       _jmHandled = true;
       setTimeout(()=>_jmHandled=false,0);
       ${reqBodyMods ? `// Modify request body
@@ -1118,22 +1121,60 @@ ${mods}
       if(body) body = _applyReqMods(body);` : ''}
       ${interceptTarget==='request' ? `// Request-only — send modified, return real response
       console.log('%c⚡ JediMock request modified (XHR)', 'color:#00D4FF;font-weight:bold;font-size:12px', { tab: _jmTab, url, time: new Date().toLocaleTimeString() });
-      return _xhrSend.apply(this, [body]);` : `this.addEventListener("load", function() {
+      return _xhrSend.apply(this, [body]);` : getResponseMode()==='replace' ? `// Replace mode — skip real request entirely, return mock data directly
+      const _xhrMock = this;
+      const _mockStatus=${t.statusCode||200}; const _mockDelay=${t.responseDelay||0};
+      let data = ${JSON.stringify(t.data)};
+${mods}
+      const _mockBody = JSON.stringify(data);
+      setTimeout(function() {
+        Object.defineProperty(_xhrMock, "responseText", { value: _mockBody, writable:true, configurable:true });
+        Object.defineProperty(_xhrMock, "response",     { value: _mockBody, writable:true, configurable:true });
+        Object.defineProperty(_xhrMock, "status",       { value: _mockStatus, writable:true, configurable:true });
+        Object.defineProperty(_xhrMock, "readyState",   { value: 4, writable:true, configurable:true });
+        _xhrMock.dispatchEvent(new Event("load"));
+        _xhrMock.dispatchEvent(new Event("readystatechange"));
+        console.log('%c⚡ JediMock replaced (XHR)', 'color:#00D4FF;font-weight:bold;font-size:12px', {
+          tab: _jmTab, pattern: _jmPattern, url,
+          status: _mockStatus, target: '${interceptTarget}', mode: 'Replace/XHR',
+          time: new Date().toLocaleTimeString()
+        });
+      }, _mockDelay||0);
+      return;` : `// Merge mode — let real request fire, then merge changes into response
+      // Covers both xhr.onload = fn and addEventListener('load') patterns
+      const _jmXhr = this;
+      const _jmDoMerge = function() {
         try {
-          let data = JSON.parse(this.responseText);
+          let data = JSON.parse(_jmXhr.responseText);
 ${mods}
           ${(rulesEnabled && rules.length > 0) ? 'const _jmR = _jmGetResponse(data); data = _jmR.data; const _mockStatus = _jmR.status;' : `const _mockStatus=${t.statusCode||200};`}
           const modified = JSON.stringify(data);
-          Object.defineProperty(this, "responseText", { value: modified, configurable:true });
-          Object.defineProperty(this, "response", { value: modified, configurable:true });
-          Object.defineProperty(this, "status", { value: _mockStatus, configurable:true });
+          Object.defineProperty(_jmXhr, "responseText", { value: modified, writable:true, configurable:true });
+          Object.defineProperty(_jmXhr, "response",     { value: modified, writable:true, configurable:true });
+          Object.defineProperty(_jmXhr, "status",       { value: _mockStatus, writable:true, configurable:true });
           console.log('%c⚡ JediMock intercepted', 'color:#00D4FF;font-weight:bold;font-size:12px', {
             tab: _jmTab, pattern: _jmPattern, url,
-            status: _mockStatus, target: '${interceptTarget}', mode: 'XHR',
+            status: _mockStatus, target: '${interceptTarget}', mode: 'Merge/XHR',
             time: new Date().toLocaleTimeString()
           });
         } catch(e) {
           console.log('%c⚡ JediMock error', 'color:#f87171;font-weight:bold', { url, error: e.message });
+        }
+      };
+      // Intercept onload property assignment (covers xhr.onload = fn pattern)
+      let _jmUserOnload = null;
+      Object.defineProperty(this, 'onload', {
+        configurable: true,
+        set: function(fn) { _jmUserOnload = fn; },
+        get: function() { return _jmUserOnload; }
+      });
+      // readystatechange at state 4 fires before 'load' event — merge runs first
+      this.addEventListener("readystatechange", function() {
+        if (this.readyState === 4) {
+          _jmDoMerge();
+          if (typeof _jmUserOnload === 'function') {
+            try { _jmUserOnload.call(this, new Event('load')); } catch(e) {}
+          }
         }
       });
       return _xhrSend.apply(this, [body]);`}
@@ -1165,6 +1206,14 @@ ${mods.split("\n").join("\n        ")}
       throw e;
     }
   };` : ``}
+
+  // ── CLEANUP: restore originals on page unload ──
+  window.addEventListener('beforeunload', function _jmCleanup() {
+    window.fetch = _fetch;
+    XMLHttpRequest.prototype.open = _xhrOpen;
+    XMLHttpRequest.prototype.send = _xhrSend;
+    window.removeEventListener('beforeunload', _jmCleanup);
+  });
 })();`;
   }
 
@@ -1300,9 +1349,9 @@ ${mods}
       const data = JSON.parse(JSON.stringify(_mockData));
 ${mods}
       if (id !== null) replaceIdInObject(data, _placeholderId, id);
-      Object.defineProperty(this, "responseText", { value: JSON.stringify(data), configurable:true });
-      Object.defineProperty(this, "response",     { value: JSON.stringify(data), configurable:true });
-      Object.defineProperty(this, "status",       { value: ${t.statusCode||200},  configurable:true });
+      Object.defineProperty(this, "responseText", { value: JSON.stringify(data), writable:true, configurable:true });
+      Object.defineProperty(this, "response",     { value: JSON.stringify(data), writable:true, configurable:true });
+      Object.defineProperty(this, "status",       { value: ${t.statusCode||200},  writable:true, configurable:true });
       console.log('%c⚡ JediMock [Async/XHR] Responding', 'color:#00D4FF;font-weight:bold', { url, id });
       setTimeout(() => this.dispatchEvent(new Event("load")), ${t.responseDelay||0});
       return;
