@@ -1,0 +1,382 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>JediMock QA Smoke</title>
+  <style>
+    :root{
+      color-scheme: dark;
+      --bg:#0b1020;
+      --panel:#121933;
+      --panel-2:#1a2345;
+      --text:#eef2ff;
+      --muted:#9aa6cf;
+      --ok:#34d399;
+      --bad:#f87171;
+      --accent:#60a5fa;
+      --border:#2a3766;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      font:14px/1.5 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+      background:linear-gradient(180deg,#0b1020,#0f1730);
+      color:var(--text);
+      min-height:100vh;
+    }
+    .wrap{max-width:980px;margin:0 auto;padding:32px 20px 48px}
+    h1{margin:0 0 8px;font-size:28px}
+    p{margin:0;color:var(--muted)}
+    .toolbar{display:flex;gap:12px;align-items:center;margin:24px 0 18px;flex-wrap:wrap}
+    button{
+      border:1px solid var(--border);
+      background:var(--accent);
+      color:#081120;
+      border-radius:8px;
+      padding:10px 14px;
+      font:inherit;
+      font-weight:700;
+      cursor:pointer;
+    }
+    button.secondary{background:var(--panel);color:var(--text)}
+    .status{
+      padding:12px 14px;
+      border:1px solid var(--border);
+      border-radius:10px;
+      background:var(--panel);
+      color:var(--muted);
+      min-width:240px;
+    }
+    .grid{display:grid;gap:12px}
+    .card{
+      background:rgba(18,25,51,.92);
+      border:1px solid var(--border);
+      border-radius:12px;
+      padding:14px 16px;
+    }
+    .row{display:flex;justify-content:space-between;gap:16px;align-items:flex-start}
+    .name{font-weight:700}
+    .pass{color:var(--ok)}
+    .fail{color:var(--bad)}
+    .details{
+      margin-top:8px;
+      color:var(--muted);
+      font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+      white-space:pre-wrap;
+      word-break:break-word;
+    }
+    .summary{
+      margin-top:16px;
+      font-size:15px;
+      font-weight:700;
+    }
+    iframe{width:0;height:0;border:0;position:absolute;left:-9999px;top:-9999px}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>JediMock QA Smoke</h1>
+    <p>Quick browser-side regression checks for script generation, persistence, and shared-tab safety.</p>
+
+    <div class="toolbar">
+      <button id="runBtn" type="button">Run smoke tests</button>
+      <a href="../test-lab.html" class="secondary" style="display:inline-flex;align-items:center;justify-content:center;padding:10px 14px;border:1px solid var(--border,#2a3766);border-radius:8px;background:var(--panel,#121933);color:var(--text,#eef2ff);font:inherit;font-weight:700;text-decoration:none;">Open test lab</a>
+      <div class="status" id="status">Waiting to run.</div>
+    </div>
+
+    <div class="grid" id="results"></div>
+    <div class="summary" id="summary"></div>
+  </div>
+
+  <iframe id="appFrame" src="../app.html" title="Hidden app frame"></iframe>
+
+  <script>
+    const resultsEl = document.getElementById("results");
+    const statusEl = document.getElementById("status");
+    const summaryEl = document.getElementById("summary");
+    const runBtn = document.getElementById("runBtn");
+    const frame = document.getElementById("appFrame");
+
+    function defaultTab(){
+      return {
+        name: "QA Tab",
+        data: {},
+        changes: [],
+        deletions: [],
+        additions: [],
+        url: "",
+        mode: "fetch",
+        asyncProtocol: "off",
+        rawJson: "",
+        script: "",
+        asyncTriggerMethod: "POST",
+        asyncTriggerUrl: "",
+        asyncResponseMethod: "GET",
+        asyncResponseUrl: "",
+        asyncIdField: "",
+        asyncIdPath: [],
+        asyncCaptureField: "",
+        firestoreField: "",
+        firestoreValue: "",
+        statusCode: "200",
+        responseDelay: 0,
+        interceptTarget: "response",
+        responseMode: "merge",
+        requestBodyMode: "merge",
+        requestBody: "",
+        reqData: {},
+        reqChanges: [],
+        reqDeletions: [],
+        reqAdditions: [],
+        reqCollapsed: {},
+        fallbackEnabled: false,
+        fallbackTimeout: 30,
+        fallbackEnabledAsync: false,
+        fallbackTimeoutAsync: 30,
+        rules: [],
+        rulesEnabled: false,
+        scriptUpToDate: false
+      };
+    }
+
+    function renderResult(name, ok, details){
+      const card = document.createElement("div");
+      card.className = "card";
+      const row = document.createElement("div");
+      row.className = "row";
+      const left = document.createElement("div");
+      left.className = "name";
+      left.textContent = name;
+      const right = document.createElement("div");
+      right.className = ok ? "pass" : "fail";
+      right.textContent = ok ? "PASS" : "FAIL";
+      row.append(left, right);
+      card.appendChild(row);
+      if(details){
+        const detail = document.createElement("div");
+        detail.className = "details";
+        detail.textContent = details;
+        card.appendChild(detail);
+      }
+      resultsEl.appendChild(card);
+    }
+
+    async function waitForAppFrame(){
+      if(frame.contentWindow && frame.contentWindow.generate && frame.contentDocument?.readyState === "complete"){
+        return frame.contentWindow;
+      }
+      await new Promise((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error("Timed out waiting for app frame")), 15000);
+        frame.onload = () => {
+          clearTimeout(timer);
+          resolve();
+        };
+      });
+      return frame.contentWindow;
+    }
+
+    function setFrameTab(w, patch){
+      const tab = Object.assign(defaultTab(), patch || {});
+      w.__qaTab = w.JediMockCore.sanitizeTabState(tab, tab.name || "QA Tab");
+      w.eval(`
+        tabs = [__qaTab];
+        currentTab = 0;
+        renamingTabIndex = -1;
+        data = tabs[0].data;
+        changes = tabs[0].changes;
+        deletions = tabs[0].deletions;
+        additions = tabs[0].additions;
+        reqData = tabs[0].reqData;
+        reqChanges = tabs[0].reqChanges;
+        reqDeletions = tabs[0].reqDeletions;
+        reqAdditions = tabs[0].reqAdditions;
+        reqCollapsed = tabs[0].reqCollapsed;
+        asyncIdField = tabs[0].asyncIdField;
+        asyncIdPath = tabs[0].asyncIdPath;
+        rules = tabs[0].rules;
+        rulesEnabled = tabs[0].rulesEnabled;
+      `);
+      delete w.__qaTab;
+      w.renderTabs();
+      w.loadState();
+    }
+
+    async function testFallbackGeneration(w){
+      setFrameTab(w, {
+        name: "Fallback QA",
+        url: "/api/users/42",
+        rawJson: "{\"name\":\"Luke\"}",
+        data: { name: "Luke" },
+        changes: [{ path: ["name"], value: "Leia" }],
+        fallbackEnabled: true,
+        fallbackTimeout: 5,
+        responseMode: "replace"
+      });
+      w.generate();
+      const output = w.document.getElementById("output").textContent;
+      const ok = output.includes("const _fbData =") &&
+        output.includes('_fbData.name = "Leia";') &&
+        !output.includes("const _jmOrigFetch = window.fetch");
+      return {
+        ok,
+        details: ok ? "Fallback script uses inline timeout handling and writes edits against _fbData." : output.slice(0, 600)
+      };
+    }
+
+    async function testRequestTreeGeneration(w){
+      setFrameTab(w, {
+        name: "Request QA",
+        url: "/api/orders",
+        rawJson: "{\"ok\":true}",
+        data: { ok: true },
+        interceptTarget: "both",
+        requestBodyMode: "merge",
+        requestBody: "{\"orderId\":1,\"status\":\"draft\"}",
+        reqData: { orderId: 1, status: "draft" },
+        reqChanges: [{ path: ["status"], value: "submitted" }],
+        reqAdditions: [{ path: ["source"], value: "qa" }]
+      });
+      w.generate();
+      const output = w.document.getElementById("output").textContent;
+      const ok = output.includes('const _reqMods = {"orderId":1,"status":"submitted","source":"qa"};');
+      return {
+        ok,
+        details: ok ? "Generated request-body mods include tree edits and additions." : output.slice(0, 600)
+      };
+    }
+
+    async function testShareRoundTrip(w){
+      const original = w.JediMockCore.sanitizeTabState({
+        name: "Shared QA",
+        url: "/api/jobs/*/status",
+        rawJson: "{\"id\":\"placeholder\",\"state\":\"pending\"}",
+        data: { id: "placeholder", state: "pending" },
+        asyncProtocol: "fetch",
+        asyncTriggerMethod: "POST",
+        asyncTriggerUrl: "/api/jobs/start",
+        asyncResponseMethod: "GET",
+        asyncResponseUrl: "/api/jobs/*/status",
+        asyncIdField: "job.id",
+        asyncIdPath: ["job", "id"],
+        interceptTarget: "both",
+        responseMode: "replace",
+        requestBodyMode: "replace",
+        requestBody: "{\"hello\":\"world\"}",
+        reqData: { hello: "world" },
+        fallbackEnabledAsync: true,
+        fallbackTimeoutAsync: 12,
+        rulesEnabled: true,
+        rules: [{ type: "always", call: 1, status: 202, delay: 150, json: "{\"ok\":true}" }]
+      }, "Shared QA");
+      const encoded = await w.compressToBase64(JSON.stringify({ version: 1, tab: original }));
+      const restored = w.JediMockCore.sanitizeTabState(JSON.parse(await w.decompressFromBase64(encoded)).tab, "Shared QA");
+      const ok = restored.asyncResponseUrl === original.asyncResponseUrl &&
+        restored.requestBody === original.requestBody &&
+        restored.requestBodyMode === "replace" &&
+        restored.interceptTarget === "both" &&
+        restored.fallbackEnabledAsync === true &&
+        restored.rules.length === 1 &&
+        restored.rules[0].status === 202;
+      return {
+        ok,
+        details: ok ? "Shared-tab payload preserves advanced settings across compress/decompress." : JSON.stringify({ original, restored }, null, 2)
+      };
+    }
+
+    async function testRenameFlow(w){
+      setFrameTab(w, { name: "Rename QA" });
+      w.startRenameTab(0);
+      const input = w.document.getElementById("tabRenameInput");
+      if(!input){
+        return { ok: false, details: "Rename input did not appear." };
+      }
+      input.value = "Renamed from QA";
+      w.commitTabRename(0, input.value);
+      const ok = w.eval("tabs[0].name") === "Renamed from QA" && !w.document.getElementById("tabRenameInput");
+      return {
+        ok,
+        details: ok ? "Tabs rename inline without prompt()." : JSON.stringify({ name: w.eval("tabs[0].name") }, null, 2)
+      };
+    }
+
+    async function testRulesGeneration(w){
+      setFrameTab(w, {
+        name: "Rules QA",
+        url: "/api/users/42",
+        rawJson: "{\"name\":\"Luke\"}",
+        data: { name: "Luke" },
+        rulesEnabled: true,
+        rules: [{ type: "always", call: 1, status: 202, delay: 120, json: "{\"name\":\"Leia\"}" }]
+      });
+      w.generate();
+      const output = w.document.getElementById("output").textContent;
+      const ok = output.includes("const _jmRules =") &&
+        output.includes('"status":202') &&
+        output.includes('"delay":120') &&
+        output.includes("JediMock rule matched");
+      return {
+        ok,
+        details: ok ? "Generated script includes response rule state and metadata." : output.slice(0, 600)
+      };
+    }
+
+    async function testInvalidShareHandling(w){
+      w.history.replaceState(null, "", "#share=%%%not-valid%%%");
+      await w.loadSharedTab();
+      const ok = !w.location.hash;
+      return {
+        ok,
+        details: ok ? "Invalid share hashes are cleared after load failure." : "Hash remained: " + w.location.hash
+      };
+    }
+
+    async function runTests(){
+      runBtn.disabled = true;
+      resultsEl.replaceChildren();
+      summaryEl.textContent = "";
+      statusEl.textContent = "Running smoke tests...";
+      statusEl.style.color = "var(--text)";
+
+      try{
+        frame.src = "../app.html?qa=" + Date.now();
+        const w = await waitForAppFrame();
+        const tests = [
+          ["Fallback script generation", testFallbackGeneration],
+          ["Request tree script generation", testRequestTreeGeneration],
+          ["Shared-tab round trip", testShareRoundTrip],
+          ["Inline tab rename", testRenameFlow],
+          ["Response rules generation", testRulesGeneration],
+          ["Invalid share handling", testInvalidShareHandling]
+        ];
+
+        let passed = 0;
+        for(const [name, fn] of tests){
+          try{
+            const result = await fn(w);
+            if(result.ok) passed += 1;
+            renderResult(name, result.ok, result.details);
+          }catch(err){
+            renderResult(name, false, err && err.stack ? err.stack : String(err));
+          }
+        }
+
+        const total = tests.length;
+        const allGood = passed === total;
+        statusEl.textContent = allGood ? "Smoke tests passed." : "Smoke tests finished with failures.";
+        statusEl.style.color = allGood ? "var(--ok)" : "var(--bad)";
+        summaryEl.textContent = passed + "/" + total + " checks passed.";
+      }catch(err){
+        statusEl.textContent = "Could not run smoke tests.";
+        statusEl.style.color = "var(--bad)";
+        renderResult("Harness startup", false, err && err.stack ? err.stack : String(err));
+      }finally{
+        runBtn.disabled = false;
+      }
+    }
+
+    runBtn.addEventListener("click", runTests);
+    runTests();
+  </script>
+</body>
+</html>

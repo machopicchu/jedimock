@@ -402,6 +402,41 @@
     min-height: 20px;
   }
 
+  .mobile-quick-actions {
+    display: none;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin: 0 0 12px 0;
+  }
+  .mobile-quick-actions .btn-ghost,
+  .mobile-quick-actions .mobile-import-btn {
+    min-height: 34px;
+    padding: 7px 10px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text-muted);
+    font-size: 12px;
+    font-weight: 500;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    text-decoration: none;
+  }
+  .mobile-quick-actions .btn-ghost:hover,
+  .mobile-quick-actions .mobile-import-btn:hover {
+    border-color: var(--border-hover);
+    color: var(--text);
+    background: var(--surface2);
+  }
+
+  @media (min-width: 901px) {
+    .mobile-quick-actions {
+      display: none !important;
+    }
+  }
+
   .tab-count { font-size: 11px; color: var(--text-dim); }
   .tab-limit { font-size: 11px; color: var(--red); }
 
@@ -1761,6 +1796,10 @@
     /* Hamburger tab — left edge, vertically centered */
     .sidebar-toggle-tab {
       display: flex !important;
+    }
+
+    .mobile-quick-actions {
+      display: flex;
     }
   }
 

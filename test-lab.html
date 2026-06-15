@@ -1,0 +1,791 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>JediMock Test Lab</title>
+<style>
+  * { box-sizing: border-box; }
+  :root {
+    --bg: #111723;
+    --surface: #1d2430;
+    --surface2: #263041;
+    --border: #3a465b;
+    --border-hover: #52627f;
+    --accent: #00d4ff;
+    --accent-hover: #00e8ff;
+    --text: #f4f8ff;
+    --text-muted: #a2aec2;
+    --green: #34d399;
+    --red: #f87171;
+    --yellow: #fbbf24;
+    --radius: 10px;
+    --radius-sm: 6px;
+  }
+  body {
+    margin: 0;
+    font-family: "Inter", "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+    color: var(--text);
+    background:
+      radial-gradient(circle at top left, rgba(0, 212, 255, 0.14), transparent 30%),
+      linear-gradient(180deg, #162030 0%, #111723 100%);
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  a {
+    color: var(--accent);
+    text-decoration: none;
+  }
+  .shell {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+  .topbar {
+    border-bottom: 1px solid var(--border);
+    background: rgba(29, 36, 48, 0.98);
+    backdrop-filter: blur(12px);
+  }
+  .topbar-inner {
+    max-width: 1240px;
+    margin: 0 auto;
+    padding: 14px 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+  }
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+  }
+  .brand-mark {
+    width: 30px;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .brand-copy {
+    min-width: 0;
+  }
+  .brand-title {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--text);
+    line-height: 1.1;
+  }
+  .brand-sub {
+    font-size: 10px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-top: 3px;
+  }
+  .topbar-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+  .nav-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--surface2);
+    color: var(--text);
+    font-size: 12px;
+    font-weight: 600;
+  }
+  .nav-link:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+  .page {
+    max-width: 1240px;
+    margin: 0 auto;
+    padding: 26px 20px 42px;
+    width: 100%;
+  }
+  .hero {
+    display: grid;
+    gap: 14px;
+    margin-bottom: 20px;
+  }
+  .eyebrow {
+    display: inline-flex;
+    align-items: center;
+    width: fit-content;
+    gap: 8px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent);
+    padding: 6px 10px;
+    border: 1px solid rgba(0, 212, 255, 0.22);
+    border-radius: 999px;
+    background: rgba(0, 212, 255, 0.08);
+  }
+  h1 {
+    margin: 0;
+    font-size: clamp(30px, 5vw, 44px);
+    line-height: 1.04;
+    letter-spacing: -0.02em;
+  }
+  .lede {
+    max-width: 860px;
+    color: var(--text-muted);
+    font-size: 15px;
+    line-height: 1.65;
+  }
+  .pillbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+  .pill {
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 6px 10px;
+    font-size: 12px;
+    color: var(--text-muted);
+    background: var(--surface2);
+  }
+  .status-strip {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 10px;
+    align-items: center;
+    padding: 12px 14px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: rgba(29, 36, 48, 0.98);
+  }
+  .status-copy {
+    min-width: 0;
+  }
+  .status-label {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-bottom: 4px;
+  }
+  .status-value {
+    font-size: 13px;
+    color: var(--text);
+    word-break: break-word;
+  }
+  .status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: var(--surface2);
+    color: var(--text-muted);
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+  .status-badge.running {
+    color: var(--accent);
+    border-color: rgba(0, 212, 255, 0.28);
+    background: rgba(0, 212, 255, 0.08);
+  }
+  .status-badge.ok {
+    color: var(--green);
+    border-color: rgba(52, 211, 153, 0.28);
+    background: rgba(52, 211, 153, 0.08);
+  }
+  .status-badge.err {
+    color: var(--red);
+    border-color: rgba(248, 113, 113, 0.28);
+    background: rgba(248, 113, 113, 0.08);
+  }
+  .layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1.08fr) minmax(320px, 0.92fr);
+    gap: 16px;
+  }
+  .panel {
+    background: rgba(29, 36, 48, 0.98);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.24);
+  }
+  .panel-head {
+    padding: 16px 18px;
+    border-bottom: 1px solid var(--border);
+    background: linear-gradient(180deg, rgba(38, 48, 65, 0.99), rgba(29, 36, 48, 0.99));
+  }
+  .panel-head h2 {
+    margin: 0;
+    font-size: 18px;
+  }
+  .panel-head p {
+    margin: 6px 0 0;
+    color: var(--text-muted);
+    line-height: 1.5;
+    font-size: 13px;
+  }
+  .panel-body {
+    padding: 18px;
+  }
+  .steps {
+    display: grid;
+    gap: 10px;
+    margin: 0;
+    padding-left: 18px;
+    color: var(--text-muted);
+    line-height: 1.55;
+    font-size: 13px;
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+  .card {
+    background: #2a3547;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px;
+  }
+  .card h3 {
+    margin: 0 0 4px;
+    font-size: 15px;
+  }
+  .card p {
+    margin: 0 0 12px;
+    color: var(--text-muted);
+    line-height: 1.45;
+    font-size: 13px;
+  }
+  .btn-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  button {
+    appearance: none;
+    border: 1px solid var(--border);
+    background: #202938;
+    color: var(--text);
+    border-radius: var(--radius-sm);
+    padding: 9px 12px;
+    font: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: transform 0.12s ease, border-color 0.12s ease, color 0.12s ease, background 0.12s ease, box-shadow 0.12s ease;
+  }
+  button:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: rgba(0, 212, 255, 0.08);
+  }
+  button:active {
+    transform: translateY(1px);
+  }
+  button.is-running,
+  button:disabled {
+    cursor: wait;
+    opacity: 1;
+    border-color: var(--accent);
+    background: rgba(0, 212, 255, 0.18);
+    color: var(--accent);
+    box-shadow: 0 0 0 1px rgba(0, 212, 255, 0.18) inset, 0 0 0 4px rgba(0, 212, 255, 0.08);
+  }
+  button.just-ran {
+    border-color: rgba(52, 211, 153, 0.7);
+    background: rgba(52, 211, 153, 0.14);
+    color: var(--green);
+    box-shadow: 0 0 0 1px rgba(52, 211, 153, 0.14) inset, 0 0 0 4px rgba(52, 211, 153, 0.07);
+  }
+  .btn-primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #04131a;
+  }
+  .btn-primary:hover {
+    background: var(--accent-hover);
+    color: #04131a;
+  }
+  .btn-primary.is-running,
+  .btn-primary:disabled {
+    background: var(--accent-hover);
+    border-color: var(--accent-hover);
+    color: #04131a;
+    box-shadow: 0 0 0 1px rgba(0, 212, 255, 0.18) inset, 0 0 0 4px rgba(0, 212, 255, 0.1);
+  }
+  .btn-primary.just-ran {
+    background: var(--green);
+    border-color: var(--green);
+    color: #04131a;
+    box-shadow: 0 0 0 1px rgba(52, 211, 153, 0.12) inset, 0 0 0 4px rgba(52, 211, 153, 0.08);
+  }
+  textarea {
+    width: 100%;
+    min-height: 132px;
+    resize: vertical;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface);
+    color: var(--text);
+    padding: 12px 14px;
+    font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+    outline: none;
+  }
+  textarea:focus {
+    border-color: var(--accent);
+  }
+  .mini {
+    margin-top: 8px;
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+  .endpoint-list {
+    display: grid;
+    gap: 8px;
+    font-size: 13px;
+  }
+  .endpoint-list code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    background: rgba(0, 212, 255, 0.08);
+    border: 1px solid rgba(0, 212, 255, 0.14);
+    border-radius: 5px;
+    padding: 2px 6px;
+  }
+  .log {
+    min-height: 520px;
+    max-height: 70vh;
+    overflow: auto;
+    background: #182131;
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px;
+    font: 12px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  .log-entry {
+    padding: 8px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+  }
+  .log-entry:last-child { border-bottom: none; }
+  .ok { color: var(--green); }
+  .warn { color: var(--yellow); }
+  .err { color: var(--red); }
+  @media (max-width: 920px) {
+    .layout { grid-template-columns: 1fr; }
+    .grid { grid-template-columns: 1fr; }
+    .topbar-inner { align-items: flex-start; flex-direction: column; }
+    .topbar-actions { justify-content: flex-start; }
+  }
+</style>
+</head>
+<body>
+<div class="shell">
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand">
+        <div class="brand-mark">
+          <svg width="30" height="30" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect width="32" height="32" rx="8" fill="#0d1018"/>
+            <polygon points="19,3 11,16 17,16 13,29 23,14 17,14" fill="#00D4FF"/>
+            <rect x="9" y="24" width="14" height="2.5" rx="1.25" fill="#00D4FF" opacity="0.45"/>
+          </svg>
+        </div>
+        <div class="brand-copy">
+          <div class="brand-title">JediMock</div>
+          <div class="brand-sub">Dev & QA Toolkit</div>
+        </div>
+      </div>
+      <div class="topbar-actions">
+        <a class="nav-link" href="./app.html">Open App</a>
+        <a class="nav-link" href="./index.html">jedimock.com</a>
+      </div>
+    </div>
+  </header>
+
+<div class="page">
+  <section class="hero">
+    <div class="eyebrow">Interactive Preview</div>
+    <h1>JediMock Test Lab</h1>
+    <div class="lede">
+      Paste a generated JediMock script into this page's DevTools console, then run fetch and XHR calls against the fake backend below. It is a quick way to preview request edits, response edits, fallback mode, and Async ID flows without touching a real API.
+    </div>
+    <div class="pillbar">
+      <span class="pill">No backend required</span>
+      <span class="pill">Works with fetch and XHR</span>
+      <span class="pill">Includes hanging endpoints for fallback</span>
+      <span class="pill">Includes Async ID trigger and status flow</span>
+    </div>
+    <div class="status-strip" id="statusStrip">
+      <div class="status-copy">
+        <div class="status-label">Last probe</div>
+        <div class="status-value" id="statusValue">Ready. Click any probe to run it.</div>
+      </div>
+      <div class="status-badge" id="statusBadge">Idle</div>
+    </div>
+  </section>
+
+  <div class="layout">
+    <section class="panel">
+      <div class="panel-head">
+        <h2>How to use it</h2>
+        <p>Generate a script in the app, paste it into this page's DevTools console, then run the probes below and compare the results with what you expected.</p>
+      </div>
+      <div class="panel-body">
+        <ol class="steps">
+          <li>Open <a href="./app.html">JediMock</a> in another tab and generate the script you want to test.</li>
+          <li>Paste that script into this page's DevTools console.</li>
+          <li>Use the buttons below to hit known endpoints and inspect the results in the log and browser console.</li>
+          <li>Use the slow endpoints to verify fallback behavior without needing a real network timeout.</li>
+        </ol>
+
+        <div class="grid" style="margin-top:18px">
+          <div class="card">
+            <h3>Response probes</h3>
+            <p>Use these for replace mode, merge mode, response rules, delays, and fallback.</p>
+            <div class="btn-row">
+              <button id="btnFetchUser">fetch GET /api/users/42</button>
+              <button id="btnXhrUser">XHR GET /api/users/42</button>
+              <button id="btnFetchSlow">fetch GET /api/slow/users/42</button>
+              <button id="btnXhrSlow">XHR GET /api/slow/users/42</button>
+            </div>
+          </div>
+
+          <div class="card">
+            <h3>Request probes</h3>
+            <p>Use these for request or both mode. The backend echoes the parsed body so you can see exactly what was sent.</p>
+            <textarea id="requestPayload">{\n  "order-id": "ord-1",\n  "user name": "Leia",\n  "items": [\n    { "sku": "A1", "qty": 1 }\n  ]\n}</textarea>
+            <div class="btn-row" style="margin-top:10px">
+              <button id="btnFetchOrder">fetch POST /api/orders</button>
+              <button id="btnXhrOrder">XHR POST /api/orders</button>
+            </div>
+            <div class="mini">Try editing keys with spaces or dashes in the JediMock request tree, then rerun these.</div>
+          </div>
+
+          <div class="card">
+            <h3>Async ID probes</h3>
+            <p>The trigger response contains the ID at <code>job.ids["public-id"]</code> so you can verify special-character path handling.</p>
+            <div class="btn-row">
+              <button id="btnAsyncTrigger">fetch POST /api/jobs/start</button>
+              <button id="btnAsyncStatus">fetch GET /api/jobs/job-123/status</button>
+              <button id="btnAsyncPair">Run trigger + status</button>
+            </div>
+          </div>
+
+          <div class="card">
+            <h3>Known endpoints</h3>
+            <div class="endpoint-list">
+              <div><code>GET /api/users/42</code> returns a normal JSON user.</div>
+              <div><code>POST /api/orders</code> echoes the request body as JSON.</div>
+              <div><code>GET /api/slow/users/42</code> never resolves, which is useful for fallback mode.</div>
+              <div><code>POST /api/jobs/start</code> returns <code>{ job: { ids: { "public-id": "job-123" } } }</code>.</div>
+              <div><code>GET /api/jobs/job-123/status</code> returns the live status payload.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Run log</h2>
+        <p>Every button click records the request, any fake-backend behavior, and the final result body or error.</p>
+      </div>
+      <div class="panel-body">
+        <div class="btn-row" style="margin-bottom:12px">
+          <button id="btnClearLog">Clear log</button>
+        </div>
+        <div class="log" id="log"></div>
+      </div>
+    </section>
+  </div>
+</div>
+</div>
+
+<script>
+  const logEl = document.getElementById('log');
+  const statusValueEl = document.getElementById('statusValue');
+  const statusBadgeEl = document.getElementById('statusBadge');
+
+  function setStatus(message, state){
+    if(statusValueEl) statusValueEl.textContent = message;
+    if(statusBadgeEl){
+      statusBadgeEl.className = 'status-badge' + (state ? ' ' + state : '');
+      statusBadgeEl.textContent = state === 'running' ? 'Running' : state === 'ok' ? 'Done' : state === 'err' ? 'Error' : 'Idle';
+    }
+  }
+
+  function log(kind, title, detail){
+    const row = document.createElement('div');
+    row.className = 'log-entry';
+    const stamp = new Date().toLocaleTimeString();
+    const cls = kind === 'error' ? 'err' : kind === 'warn' ? 'warn' : 'ok';
+    const heading = document.createElement('div');
+    heading.className = cls;
+    heading.textContent = `[${stamp}] ${title}`;
+    const body = document.createElement('div');
+    body.textContent = typeof detail === 'string' ? detail : JSON.stringify(detail, null, 2);
+    row.append(heading, body);
+    logEl.prepend(row);
+  }
+
+  function clone(value){
+    return value == null ? value : JSON.parse(JSON.stringify(value));
+  }
+
+  function makeJsonResponse(data, status = 200, delay = 0){
+    return new Promise(resolve => {
+      setTimeout(() => {
+        resolve(new Response(JSON.stringify(data), {
+          status,
+          headers: { 'Content-Type': 'application/json' }
+        }));
+      }, delay);
+    });
+  }
+
+  function normalizeUrl(raw){
+    try { return new URL(raw, location.href).pathname + new URL(raw, location.href).search; }
+    catch(e) { return String(raw); }
+  }
+
+  async function fakeBackend(method, rawUrl, bodyText){
+    const url = normalizeUrl(rawUrl);
+    log('ok', `Fake backend ${method} ${url}`, bodyText ? { body: bodyText } : 'no body');
+
+    if(method === 'GET' && url === '/api/users/42'){
+      return makeJsonResponse({
+        id: 42,
+        name: 'Luke',
+        role: 'pilot',
+        active: true,
+        tags: ['jedi', 'rebel']
+      });
+    }
+
+    if(method === 'GET' && url === '/api/slow/users/42'){
+      log('warn', 'Fake backend hanging request', { url });
+      return new Promise(() => {});
+    }
+
+    if(method === 'POST' && url === '/api/orders'){
+      let parsed = null;
+      try { parsed = bodyText ? JSON.parse(bodyText) : null; }
+      catch(e) {
+        return makeJsonResponse({ accepted: false, parseError: e.message, raw: bodyText }, 400);
+      }
+      return makeJsonResponse({
+        accepted: true,
+        received: parsed,
+        seenKeys: parsed && typeof parsed === 'object' ? Object.keys(parsed) : []
+      });
+    }
+
+    if(method === 'POST' && url === '/api/jobs/start'){
+      return makeJsonResponse({
+        job: {
+          ids: {
+            'public-id': 'job-123'
+          }
+        },
+        status: 'queued'
+      });
+    }
+
+    if(method === 'GET' && url === '/api/jobs/job-123/status'){
+      return makeJsonResponse({
+        jobId: 'job-123',
+        status: 'pending',
+        progress: 35
+      });
+    }
+
+    return makeJsonResponse({
+      error: 'Unknown endpoint',
+      method,
+      url
+    }, 404);
+  }
+
+  const originalFetch = window.fetch.bind(window);
+  window.fetch = async function(url, options = {}){
+    const method = (options.method || 'GET').toUpperCase();
+    if(typeof url === 'string' && url.startsWith('/api/')){
+      return fakeBackend(method, url, options.body || '');
+    }
+    return originalFetch(url, options);
+  };
+
+  class FakeXMLHttpRequest extends EventTarget {
+    constructor(){
+      super();
+      this.readyState = 0;
+      this.status = 0;
+      this.responseText = '';
+      this.response = '';
+      this.onreadystatechange = null;
+      this.onload = null;
+      this.onerror = null;
+      this._headers = {};
+      this._method = 'GET';
+      this._url = '';
+    }
+
+    open(method, url){
+      this._method = method;
+      this._url = url;
+      this.readyState = 1;
+      this._emit('readystatechange');
+    }
+
+    setRequestHeader(name, value){
+      this._headers[name] = value;
+    }
+
+    async send(body = ''){
+      try{
+        const res = await fakeBackend((this._method || 'GET').toUpperCase(), this._url, body);
+        this.status = res.status;
+        this.responseText = await res.text();
+        this.response = this.responseText;
+        this.readyState = 4;
+        this._emit('readystatechange');
+        this._emit('load');
+      }catch(e){
+        this.readyState = 4;
+        this._emit('readystatechange');
+        this._emit('error', e);
+      }
+    }
+
+    _emit(type, error){
+      const evt = new Event(type);
+      this.dispatchEvent(evt);
+      const handler = this['on' + type];
+      if(typeof handler === 'function'){
+        try { handler.call(this, error || evt); } catch(e) {}
+      }
+    }
+  }
+
+  window.XMLHttpRequest = FakeXMLHttpRequest;
+
+  async function logResponse(label, res){
+    const text = await res.text();
+    try { log('ok', label, JSON.parse(text)); }
+    catch(e){ log('ok', label, text); }
+  }
+
+  async function doFetchUser(){
+    const res = await fetch('/api/users/42');
+    await logResponse('fetch GET /api/users/42 result', res);
+  }
+
+  async function doFetchSlow(){
+    const req = fetch('/api/slow/users/42');
+    const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('No response after 4s. If fallback is enabled, JediMock should answer before this.')), 4000));
+    const res = await Promise.race([req, timeout]);
+    await logResponse('fetch GET /api/slow/users/42 result', res);
+  }
+
+  async function doFetchOrder(){
+    const body = document.getElementById('requestPayload').value;
+    const res = await fetch('/api/orders', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body
+    });
+    await logResponse('fetch POST /api/orders result', res);
+  }
+
+  async function doXhr(url, method, body, label){
+    await new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open(method, url);
+      xhr.onload = function(){
+        try { log('ok', label, JSON.parse(xhr.responseText)); }
+        catch(e){ log('ok', label, xhr.responseText); }
+        resolve();
+      };
+      xhr.onerror = function(err){
+        reject(err || new Error('XHR error'));
+      };
+      xhr.send(body);
+    });
+  }
+
+  async function doAsyncTrigger(){
+    const res = await fetch('/api/jobs/start', { method: 'POST' });
+    await logResponse('fetch POST /api/jobs/start result', res);
+  }
+
+  async function doAsyncStatus(){
+    const res = await fetch('/api/jobs/job-123/status');
+    await logResponse('fetch GET /api/jobs/job-123/status result', res);
+  }
+
+  async function wrapRun(fn){
+    const triggerBtn = this;
+    const label = triggerBtn && triggerBtn.textContent ? triggerBtn.textContent.trim() : 'Probe';
+    if(triggerBtn){
+      triggerBtn.classList.remove('just-ran');
+      triggerBtn.disabled = true;
+      triggerBtn.classList.add('is-running');
+    }
+    setStatus(`Running ${label}...`, 'running');
+    try{
+      await fn();
+      setStatus(`${label} finished. New output was added to the run log.`, 'ok');
+    }catch(e){
+      log('error', 'Probe failed', e.message || String(e));
+      setStatus(`${label} failed: ${e.message || String(e)}`, 'err');
+    }finally{
+      if(triggerBtn){
+        triggerBtn.disabled = false;
+        triggerBtn.classList.remove('is-running');
+        triggerBtn.classList.add('just-ran');
+        setTimeout(() => triggerBtn.classList.remove('just-ran'), 900);
+      }
+    }
+  }
+
+  document.getElementById('btnFetchUser').onclick = function(){ return wrapRun.call(this, doFetchUser); };
+  document.getElementById('btnXhrUser').onclick = function(){ return wrapRun.call(this, () => doXhr('/api/users/42', 'GET', '', 'XHR GET /api/users/42 result')); };
+  document.getElementById('btnFetchSlow').onclick = function(){ return wrapRun.call(this, doFetchSlow); };
+  document.getElementById('btnXhrSlow').onclick = function(){ return wrapRun.call(this, () => doXhr('/api/slow/users/42', 'GET', '', 'XHR GET /api/slow/users/42 result')); };
+  document.getElementById('btnFetchOrder').onclick = function(){ return wrapRun.call(this, doFetchOrder); };
+  document.getElementById('btnXhrOrder').onclick = function(){ return wrapRun.call(this, () => doXhr('/api/orders', 'POST', document.getElementById('requestPayload').value, 'XHR POST /api/orders result')); };
+  document.getElementById('btnAsyncTrigger').onclick = function(){ return wrapRun.call(this, doAsyncTrigger); };
+  document.getElementById('btnAsyncStatus').onclick = function(){ return wrapRun.call(this, doAsyncStatus); };
+  document.getElementById('btnAsyncPair').onclick = function(){ return wrapRun.call(this, async () => {
+    await doAsyncTrigger();
+    await doAsyncStatus();
+  }); };
+  document.getElementById('btnClearLog').onclick = () => { logEl.replaceChildren(); };
+
+  setStatus('Ready. Click any probe to run it.', '');
+  log('ok', 'Test lab ready', {
+    hint: 'Paste your generated JediMock script into DevTools, then run the probes.'
+  });
+</script>
+</body>
+</html>

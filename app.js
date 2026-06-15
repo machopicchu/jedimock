@@ -13,14 +13,47 @@ let tabs=[{
   asyncTriggerUrl:"",
   asyncResponseMethod:"GET",
   asyncResponseUrl:"",
-  asyncIdField:""
+  asyncIdField:"",
+  asyncIdPath:[]
 }];
 
 let currentTab=0;
+let renamingTabIndex=-1;
 let data={},changes=[],deletions=[],additions=[],collapsed={};
 let asyncIdField="";
-
-const TAB_LIMIT = 100;
+let asyncIdPath=[];
+const {
+  TAB_LIMIT,
+  MAX_TAB_NAME_LEN,
+  MAX_IMPORT_FILE_BYTES,
+  MAX_SHARE_HASH_CHARS,
+  MAX_SHARE_BYTES,
+  clampString,
+  sanitizeTabState,
+  bytesToBase64Url,
+  base64UrlToBytes,
+  isArrayIndexSegment,
+  isSafeJsIdentifier,
+  formatPath,
+  formatReadablePath,
+  buildTrackedModsScript,
+  buildTrackedObject,
+  setValueAtPath,
+  deleteValueAtPath
+} = globalThis.JediMockCore;
+const {
+  sanitizeJson,
+  computeLineDiff,
+  inlineDiff
+} = globalThis.JediMockDiffCore;
+const {
+  wildcardToRegex,
+  generateRulesScript
+} = globalThis.JediMockScriptGen;
+const {
+  buildSessionPayload,
+  sanitizeStoredPayload
+} = globalThis.JediMockSessionStore;
 
 /* THEME */
 function toggleTheme(){
@@ -79,13 +112,46 @@ async function pasteFromClipboard(){
 /* TABS */
 function renderTabs(){
   const el=document.getElementById("tabs");
-  el.innerHTML="";
+  el.replaceChildren();
 
   tabs.forEach((t,i)=>{
     const tab=document.createElement("div");
     tab.className="tab"+(i===currentTab?" active":"");
-    tab.innerHTML=`<span>${t.name}</span>${tabs.length>1?`<span class="tab-close" onclick="closeTab(event,${i})">×</span>`:""}`;
-    tab.onclick=()=>switchTab(i);
+    if(i===renamingTabIndex){
+      const input=document.createElement("input");
+      input.id="tabRenameInput";
+      input.type="text";
+      input.maxLength=MAX_TAB_NAME_LEN;
+      input.value=t.name;
+      input.setAttribute("aria-label","Rename tab");
+      input.style.cssText="flex:1;min-width:0;background:var(--surface2);border:1px solid var(--accent);border-radius:5px;padding:4px 6px;color:var(--text);font-size:12px;outline:none";
+      input.onclick=(e)=>e.stopPropagation();
+      input.onkeydown=(e)=>{
+        if(e.key==="Enter"){
+          e.preventDefault();
+          commitTabRename(i, input.value);
+        }
+        if(e.key==="Escape"){
+          e.preventDefault();
+          cancelTabRename();
+        }
+      };
+      input.onblur=()=>commitTabRename(i, input.value);
+      tab.appendChild(input);
+    } else {
+      const name=document.createElement("span");
+      name.textContent=t.name;
+      tab.appendChild(name);
+    }
+    if(tabs.length>1){
+      const closeBtn=document.createElement("span");
+      closeBtn.className="tab-close";
+      closeBtn.textContent="×";
+      closeBtn.onclick=(e)=>closeTab(e,i);
+      tab.appendChild(closeBtn);
+    }
+    tab.onclick=()=>{ if(renamingTabIndex!==i) switchTab(i); };
+    tab.ondblclick=()=>startRenameTab(i);
     tab.oncontextmenu=(e)=>{ e.preventDefault(); showTabContextMenu(e, i); };
     el.appendChild(tab);
   });
@@ -109,15 +175,53 @@ function renderTabs(){
   // Rebuild dropdown
   const dd=document.getElementById("tabDropdown");
   if(dd){
-    dd.innerHTML="";
+    dd.replaceChildren();
     tabs.forEach((t,i)=>{
       const item=document.createElement("div");
       item.className="tab-dropdown-item"+(i===currentTab?" active":"");
-      item.innerHTML=`<span class="tab-dropdown-num">${i+1}</span><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t.name}</span>`;
+      const num=document.createElement("span");
+      num.className="tab-dropdown-num";
+      num.textContent=String(i+1);
+      const label=document.createElement("span");
+      label.style.flex="1";
+      label.style.overflow="hidden";
+      label.style.textOverflow="ellipsis";
+      label.style.whiteSpace="nowrap";
+      label.textContent=t.name;
+      item.append(num,label);
       item.onclick=()=>{ switchTab(i); closeDropdown(); };
       dd.appendChild(item);
     });
   }
+}
+
+function startRenameTab(i){
+  hideTabContextMenu();
+  if(i<0||i>=tabs.length) return;
+  renamingTabIndex=i;
+  renderTabs();
+  setTimeout(()=>{
+    const input=document.getElementById("tabRenameInput");
+    if(input){
+      input.focus();
+      input.select();
+    }
+  },0);
+}
+
+function commitTabRename(i, rawName){
+  if(i<0||i>=tabs.length) return cancelTabRename();
+  const nextName=clampString(rawName, MAX_TAB_NAME_LEN).trim() || tabs[i].name;
+  tabs[i].name=nextName;
+  renamingTabIndex=-1;
+  renderTabs();
+  persistSession();
+}
+
+function cancelTabRename(){
+  if(renamingTabIndex===-1) return;
+  renamingTabIndex=-1;
+  renderTabs();
 }
 
 let dropdownOpen=false;
@@ -168,8 +272,9 @@ document.addEventListener("click",(e)=>{
 
 function addTab(){
   if(tabs.length>=TAB_LIMIT) return;
+  renamingTabIndex=-1;
   saveState(); // persist current tab before switching away
-  tabs.push({name:"Tab "+(tabs.length+1),data:{},changes:[],deletions:[],additions:[],url:"",mode:"fetch",asyncProtocol:"off",rawJson:"",script:"",asyncTriggerMethod:"POST",asyncTriggerUrl:"",asyncResponseMethod:"GET",asyncResponseUrl:"",asyncIdField:"",asyncCaptureField:""});
+  tabs.push({name:"Tab "+(tabs.length+1),data:{},changes:[],deletions:[],additions:[],url:"",mode:"fetch",asyncProtocol:"off",rawJson:"",script:"",asyncTriggerMethod:"POST",asyncTriggerUrl:"",asyncResponseMethod:"GET",asyncResponseUrl:"",asyncIdField:"",asyncIdPath:[],asyncCaptureField:""});
   persistSession();
   currentTab=tabs.length-1;
   loadState();
@@ -178,14 +283,17 @@ function addTab(){
 
 function closeTab(e,i){
   e.stopPropagation();
+  renamingTabIndex=-1;
   saveState(); // persist current tab before any index shift
   tabs.splice(i,1);
   currentTab=Math.min(currentTab, tabs.length-1);
   loadState();
   renderTabs();
+  persistSession();
 }
 
 function switchTab(i){
+  renamingTabIndex=-1;
   saveState();
   persistSession();
   currentTab=i;
@@ -220,6 +328,7 @@ function saveState(){
   t.asyncResponseMethod=g("asyncResponseMethod")?g("asyncResponseMethod").value:"GET";
   t.asyncResponseUrl=g("asyncResponseUrl")?g("asyncResponseUrl").value:"";
   t.asyncIdField=asyncIdField;
+  t.asyncIdPath=[...asyncIdPath];
   t.statusCode=g("statusCode")?g("statusCode").value||"200":"200";
   t.responseDelay=g("responseDelay")?parseInt(g("responseDelay").value)||0:0;
   saveRulesToTab();
@@ -249,41 +358,48 @@ function saveState(){
 
 function loadState(){
   _loadingState = true;
-  const t=tabs[currentTab];
+  try{
+    const t=tabs[currentTab];
 
-  urlInput.value=t.url||"";
-  jsonInput.value=t.rawJson||"";
+    urlInput.value=t.url||"";
+    jsonInput.value=t.rawJson||"";
 
-  document.querySelectorAll("input[name=mode]")
-    .forEach(r=>r.checked=r.value===t.mode);
-  document.querySelectorAll("input[name=asyncMode]")
-    .forEach(r=>r.checked=r.value===(t.asyncProtocol||"off"));
+    document.querySelectorAll("input[name=mode]")
+      .forEach(r=>r.checked=r.value===t.mode);
+    document.querySelectorAll("input[name=asyncMode]")
+      .forEach(r=>r.checked=r.value===(t.asyncProtocol||"off"));
 
-  data=t.data||{};
-  changes=t.changes||[];
-  deletions=t.deletions||[];
-  additions=t.additions||[];
-  collapsed={};
-  asyncIdField=t.asyncIdField||"";
+    data=t.data||{};
+    changes=t.changes||[];
+    deletions=t.deletions||[];
+    additions=t.additions||[];
+    collapsed={};
+    asyncIdField=t.asyncIdField||"";
+    asyncIdPath=resolveAsyncIdPath(t);
+    if(!asyncIdField && asyncIdPath.length) asyncIdField=formatReadablePath(asyncIdPath);
 
-  document.getElementById("asyncTriggerMethod").value=t.asyncTriggerMethod||"POST";
-  document.getElementById("asyncTriggerUrl").value=t.asyncTriggerUrl||"";
-  document.getElementById("asyncResponseMethod").value=t.asyncResponseMethod||"GET";
-  document.getElementById("asyncResponseUrl").value=t.asyncResponseUrl||"";
+    document.getElementById("asyncTriggerMethod").value=t.asyncTriggerMethod||"POST";
+    document.getElementById("asyncTriggerUrl").value=t.asyncTriggerUrl||"";
+    document.getElementById("asyncResponseMethod").value=t.asyncResponseMethod||"GET";
+    document.getElementById("asyncResponseUrl").value=t.asyncResponseUrl||"";
 
-  const scEl=document.getElementById("statusCode");
-  if(scEl) scEl.value=t.statusCode||"200";
-  const rdEl=document.getElementById("responseDelay");
-  if(rdEl) rdEl.value=t.responseDelay||0;
+    const scEl=document.getElementById("statusCode");
+    if(scEl) scEl.value=t.statusCode||"200";
+    const rdEl=document.getElementById("responseDelay");
+    if(rdEl) rdEl.value=t.responseDelay||0;
 
-  output.textContent=t.script||"";
+    output.textContent=t.script||"";
 
-  loadRulesFromTab();
-  loadTargetFromTab();
-  loadModesFromTab();
-  onModeChange();
-  render();
-  updateVisibility();
+    loadRulesFromTab();
+    loadTargetFromTab();
+    loadModesFromTab();
+    onModeChange();
+    render();
+    updateVisibility();
+  }catch(e){
+    _loadingState = false;
+    throw e;
+  }
 }
 
 function onModeChange(){
@@ -383,6 +499,7 @@ function loadJson(){
     jsonInput.style.borderColor="var(--red)";
     setTimeout(()=>jsonInput.style.borderColor="",2000);
     const _ji=document.getElementById("jsonInput"); if(_ji){_ji.style.borderColor="var(--red)";setTimeout(()=>_ji.style.borderColor="",2000);} console.error("Invalid JSON");
+    edFlash('⚠ Invalid JSON — fix it before loading', 'var(--red)');
     return;
   }
 
@@ -400,7 +517,7 @@ function loadJson(){
 /* TREE */
 function render(){
   const v=document.getElementById("viewerSection");
-  v.innerHTML="";
+  v.replaceChildren();
   walk(data,[],v);
   updateChangesBadge();
   updateDiffPanel();
@@ -412,14 +529,23 @@ let _allLeaves=[];
 function buildAsyncFieldSelectors(){
   _allLeaves=[];
   function collectLeaves(obj, path){
-    if(typeof obj!=="object"||obj===null){ _allLeaves.push(path.join(".")); return; }
+    if(typeof obj!=="object"||obj===null){
+      _allLeaves.push({
+        label: formatReadablePath(path),
+        path: [...path]
+      });
+      return;
+    }
     Object.keys(obj).forEach(k=>collectLeaves(obj[k],[...path,k]));
   }
   collectLeaves(data,[]);
   updateSelectedDisplay();
   const q=document.getElementById("idFieldSearch");
   if(q&&q.value.trim()) filterFieldPills();
-  else { const el=document.getElementById("idFieldList"); if(el) el.innerHTML=""; }
+  else {
+    const el=document.getElementById("idFieldList");
+    if(el) el.replaceChildren();
+  }
 }
 
 function onIdFieldSelected(){
@@ -430,22 +556,29 @@ function filterFieldPills(){
   const q=document.getElementById("idFieldSearch").value.trim().toLowerCase();
   const container=document.getElementById("idFieldList");
   if(!container) return;
-  if(!q){ container.innerHTML=""; return; }
-  const matches=_allLeaves.filter(l=>l.toLowerCase().includes(q));
-  container.innerHTML="";
+  if(!q){ container.replaceChildren(); return; }
+  const matches=_allLeaves.filter(leaf=>leaf.label.toLowerCase().includes(q));
+  container.replaceChildren();
   if(matches.length===0){
-    container.innerHTML='<span style="font-size:12px;color:var(--text-dim)">No fields match</span>';
+    const empty=document.createElement('span');
+    empty.style.fontSize='12px';
+    empty.style.color='var(--text-dim)';
+    empty.textContent='No fields match';
+    container.appendChild(empty);
     return;
   }
   matches.slice(0,30).forEach(leaf=>{
     const pill=document.createElement("span");
-    const selected=leaf===asyncIdField;
+    const selected=JSON.stringify(leaf.path)===JSON.stringify(asyncIdPath);
     pill.className="id-field-pill"+(selected?" selected":"");
-    pill.textContent=leaf;
-    pill.title=leaf;
+    pill.textContent=leaf.label;
+    pill.title=leaf.label;
     pill.onclick=()=>{
-      asyncIdField=asyncIdField===leaf?"":leaf;
+      const samePath = JSON.stringify(asyncIdPath)===JSON.stringify(leaf.path);
+      asyncIdField=samePath?"":leaf.label;
+      asyncIdPath=samePath?[]:[...leaf.path];
       updateSelectedDisplay();
+      onIdFieldSelected();
       filterFieldPills();
     };
     container.appendChild(pill);
@@ -462,6 +595,27 @@ function updateSelectedDisplay(){
   const el=document.getElementById("idFieldSelected");
   if(!el) return;
   el.textContent=asyncIdField?"Selected: "+asyncIdField:"";
+}
+
+function parseLegacyAsyncPath(pathStr){
+  if(!pathStr) return [];
+  return String(pathStr).split(".").filter(Boolean);
+}
+
+function resolveAsyncIdPath(tabLike){
+  if(tabLike && Array.isArray(tabLike.asyncIdPath) && tabLike.asyncIdPath.length) return [...tabLike.asyncIdPath];
+  if(asyncIdPath && asyncIdPath.length) return [...asyncIdPath];
+  return parseLegacyAsyncPath(tabLike && tabLike.asyncIdField ? tabLike.asyncIdField : asyncIdField);
+}
+
+function getValueAtPath(obj, path){
+  try{
+    let ref = obj;
+    for(const segment of path) ref = ref[segment];
+    return ref;
+  }catch(e){
+    return undefined;
+  }
 }
 
 function getOriginalValue(path){
@@ -772,11 +926,9 @@ function walk(obj,path,parent){
             const _changes = _isReq ? reqChanges : changes;
             const _additions = _isReq ? reqAdditions : additions;
 
-            div.innerHTML="";
             div.style.display="flex";
             div.style.alignItems="center";
-            div.appendChild(keySpan);
-            div.appendChild(input);
+            div.replaceChildren(keySpan, input);
             input.focus();
             input.select();
 
@@ -840,7 +992,7 @@ function updateDiffPanel(){
   const total=changes.length+deletions.length+additions.length;
   if(total===0){ panel.classList.add("hidden"); return; }
   panel.classList.remove("hidden");
-  list.innerHTML="";
+  list.replaceChildren();
 
   changes.forEach(ch=>{
     const orig=getOriginalValue(ch.path);
@@ -849,7 +1001,7 @@ function updateDiffPanel(){
     const pathStr=ch.path.map(p=>isNaN(p)?p:`[${p}]`).join(".");
     const origStr=orig===undefined?"?":(typeof orig==="string"?`"${orig}"`:String(orig));
     const newStr=typeof ch.value==="string"?`"${ch.value}"`:String(ch.value);
-    row.innerHTML=`<span class="diff-path" title="${pathStr}">${pathStr}</span><span class="diff-arrow">→</span><span class="diff-val" title="${newStr}">${newStr}</span>`;
+    appendDiffRowSummary(row, pathStr, newStr, "diff-val");
     const resetBtn=document.createElement("button");
     resetBtn.className="diff-reset-btn";
     resetBtn.title="Restore to "+origStr;
@@ -863,7 +1015,7 @@ function updateDiffPanel(){
     const row=document.createElement("div");
     row.className="diff-row";
     const pathStr=path.map(p=>isNaN(p)?p:`[${p}]`).join(".");
-    row.innerHTML=`<span class="diff-path" title="${pathStr}">${pathStr}</span><span class="diff-arrow">→</span><span class="diff-val-del">deleted</span>`;
+    appendDiffRowSummary(row, pathStr, "deleted", "diff-val-del");
     const undoBtn=document.createElement("button");
     undoBtn.className="diff-reset-btn";
     undoBtn.title="Undo deletion";
@@ -878,18 +1030,9 @@ function updateDiffPanel(){
     row.className="diff-row";
     const pathStr=a.path.map(p=>isNaN(p)?p:`[${p}]`).join(".");
     const valStr=typeof a.value==="string"?`"${a.value}"`:String(a.value);
-    row.innerHTML=`<span class="diff-path" title="${pathStr}">${pathStr}</span><span class="diff-arrow">→</span><span class="diff-val-add">${valStr} (added)</span>`;
+    appendDiffRowSummary(row, pathStr, `${valStr} (added)`, "diff-val-add");
     list.appendChild(row);
   });
-}
-
-/* Convert wildcard pattern (with *) to a JS regex string for the generated script */
-function wildcardToRegex(pattern){
-  // Escape all special regex chars except *
-  const escaped = pattern.replace(/[-+?^${}()|[\]\\]/g, '\\$&').replace(/\./g, '\\.');
-  // Replace * with segment matcher (no / or ?)
-  const regexStr = escaped.replace(/\*/g, '[^/?]+');
-  return regexStr;
 }
 
 /* Fetch + XHR: patches changes, applies deletions, injects additions */
@@ -1016,23 +1159,36 @@ function generate(){
     edFlash('⚠ Paste a request body and click Load JSON first','var(--red)');
     return;
   }
+  if(isAsync){
+    if(!t.asyncTriggerUrl.trim()){
+      const el=document.getElementById("asyncTriggerUrl");
+      if(el){ el.focus(); el.style.borderColor="var(--red)"; setTimeout(()=>el.style.borderColor="",2000); }
+      edFlash('⚠ Enter the trigger URL for Async ID mode', 'var(--red)');
+      return;
+    }
+    if(!t.asyncResponseUrl.trim()){
+      const el=document.getElementById("asyncResponseUrl");
+      if(el){ el.focus(); el.style.borderColor="var(--red)"; setTimeout(()=>el.style.borderColor="",2000); }
+      edFlash('⚠ Enter the response URL pattern for Async ID mode', 'var(--red)');
+      return;
+    }
+    const selectedAsyncPath = resolveAsyncIdPath(t);
+    if(selectedAsyncPath.length===0){
+      const el=document.getElementById("idFieldSearch");
+      if(el){ el.focus(); el.style.borderColor="var(--red)"; setTimeout(()=>el.style.borderColor="",2000); }
+      edFlash('⚠ Select the ID field to capture from the trigger response', 'var(--red)');
+      return;
+    }
+  }
   let script="";
-  let mods="";
   const fallbackEnabled = getFallbackEnabled();
   const fallbackTimeout = getFallbackTimeout();
   const fallbackEnabledAsync = getFallbackEnabledAsync();
   const fallbackTimeoutAsync = getFallbackTimeoutAsync();
   try {
 
-  t.changes.forEach(ch=>{
-    mods+=`          data${formatPath(ch.path)} = ${JSON.stringify(ch.value)};\n`;
-  });
-  t.deletions.forEach(path=>{
-    mods+=`          delete data${formatPath(path)};\n`;
-  });
-  t.additions.forEach(a=>{
-    mods+=`          data${formatPath(a.path)} = ${JSON.stringify(a.value)};\n`;
-  });
+  const mods = buildTrackedModsScript('data', t.changes, t.deletions, t.additions, '          ');
+  const fallbackMods = buildTrackedModsScript('_fbData', t.changes, t.deletions, t.additions, '        ');
 
   // ── UNIFIED INTERCEPT SCRIPT (patches both fetch AND XHR) ──
   if(!isAsync){
@@ -1047,7 +1203,13 @@ const _reqBodyScript = reqBodyMods ? `
     try{
       if(_reqMode==='replace') return JSON.stringify(_reqMods);
       const b=JSON.parse(bodyStr||'{}'); Object.assign(b,_reqMods); return JSON.stringify(b);
-    }catch(e){ return bodyStr; }
+    }catch(e){
+      console.warn('%c⚠ JediMock warning', 'color:#fbbf24;font-weight:bold;font-size:12px', {
+        message: 'Request body merge skipped because the outgoing body was not valid JSON',
+        error: e.message
+      });
+      return bodyStr;
+    }
   }` : '';
 script=`(function(){
   const _fetch = window.fetch;
@@ -1055,9 +1217,22 @@ script=`(function(){
   const _xhrSend = XMLHttpRequest.prototype.send;
   const _jmPattern = ${JSON.stringify(t.url)};
   const _jmTab = ${JSON.stringify(t.name||'Tab '+(currentTab+1))};
+  const _jmFallbackMs = ${fallbackEnabled ? fallbackTimeout * 1000 : 0};
   let _jmHandled = false;
 ${_rulesScript}
 ${_reqBodyScript}
+  function _jmIsFallbackError(e){
+    return e && (e.message === 'jm_timeout' || e.message === 'Failed to fetch' || e.name === 'TypeError');
+  }
+  function _jmBuildFallbackResponse(url, reason){
+    console.log('%c⚡ JediMock fallback', 'color:#00D4FF;font-weight:bold;font-size:12px', { url, reason, tab: _jmTab });
+    const _fbData = ${JSON.stringify(t.data)};
+${fallbackEnabled ? fallbackMods : ''}
+    return new Response(JSON.stringify(_fbData), {
+      status: ${t.statusCode||200},
+      headers: { 'Content-Type': 'application/json' }
+    });
+  }
   // ── ACTIVATION LOG ──
   (()=>{
     const _info = { url: _jmPattern, target: '${interceptTarget}', mode: '${getResponseMode()}' };
@@ -1074,36 +1249,54 @@ ${_reqBodyScript}
     if (${_urlMatch}) {
       _jmHandled = true;
       setTimeout(()=>_jmHandled=false,0);
-      ${reqBodyMods ? `// Modify request body
-      if(options.body) options = {...options, body: _applyReqMods(options.body)};` : ''}
-      ${interceptTarget==='request' ? `// Request-only mode — send modified request, return real response
-      const res = await _fetch(url, options);
-      console.log('%c⚡ JediMock request modified', 'color:#00D4FF;font-weight:bold;font-size:12px', { tab: _jmTab, url, time: new Date().toLocaleTimeString() });
-      return res;` : getResponseMode()==='replace' ? `// Replace mode — return full JSON directly, skip real response
-      const _mockStatus=${t.statusCode||200}; const _mockDelay=${t.responseDelay||0};
-      let data = ${JSON.stringify(t.data)};
+      const _jmRunFetchIntercept = async () => {
+        ${reqBodyMods ? `// Modify request body
+        if(options.body) options = {...options, body: _applyReqMods(options.body)};` : ''}
+        ${interceptTarget==='request' ? `// Request-only mode — send modified request, return real response
+        const res = await _fetch(url, options);
+        console.log('%c⚡ JediMock request modified', 'color:#00D4FF;font-weight:bold;font-size:12px', { tab: _jmTab, url, time: new Date().toLocaleTimeString() });
+        return res;` : getResponseMode()==='replace' ? `// Replace mode — return full JSON directly, skip real response
+        const _mockStatus=${t.statusCode||200}; const _mockDelay=${t.responseDelay||0};
+        let data = ${JSON.stringify(t.data)};
 ${mods}
-      if(_mockDelay>0) await new Promise(r=>setTimeout(r,_mockDelay));
-      console.log('%c⚡ JediMock replaced', 'color:#00D4FF;font-weight:bold;font-size:12px', { tab: _jmTab, url, status: _mockStatus, mode: 'Replace', time: new Date().toLocaleTimeString() });
-      return new Response(JSON.stringify(data), { status: _mockStatus, headers: { "Content-Type": "application/json" } });` : `const res = await _fetch(url, options);
-      try {
-        let data = await res.clone().json();
-${mods}
-        ${(rulesEnabled && rules.length > 0) ? 'const _jmR = _jmGetResponse(data); data = _jmR.data; const _mockStatus = _jmR.status; const _mockDelay = _jmR.delay;' : `const _mockStatus=${t.statusCode||200}; const _mockDelay=${t.responseDelay||0};`}
         if(_mockDelay>0) await new Promise(r=>setTimeout(r,_mockDelay));
-        console.log('%c⚡ JediMock intercepted', 'color:#00D4FF;font-weight:bold;font-size:12px', {
-          tab: _jmTab, pattern: _jmPattern, url,
-          status: _mockStatus, target: '${interceptTarget}', delay: _mockDelay+'ms',
-          time: new Date().toLocaleTimeString()
-        });
-        return new Response(JSON.stringify(data), {
-          status: _mockStatus,
-          headers: { "Content-Type": "application/json" }
-        });
-      } catch(e) {
-        console.log('%c⚡ JediMock error', 'color:#f87171;font-weight:bold', { url, error: e.message });
-        return res;
-      }`}
+        console.log('%c⚡ JediMock replaced', 'color:#00D4FF;font-weight:bold;font-size:12px', { tab: _jmTab, url, status: _mockStatus, mode: 'Replace', time: new Date().toLocaleTimeString() });
+        return new Response(JSON.stringify(data), { status: _mockStatus, headers: { "Content-Type": "application/json" } });` : `const res = await _fetch(url, options);
+        try {
+          let data = await res.clone().json();
+${mods}
+          ${(rulesEnabled && rules.length > 0) ? 'const _jmR = _jmGetResponse(data); data = _jmR.data; const _mockStatus = _jmR.status; const _mockDelay = _jmR.delay;' : `const _mockStatus=${t.statusCode||200}; const _mockDelay=${t.responseDelay||0};`}
+          if(_mockDelay>0) await new Promise(r=>setTimeout(r,_mockDelay));
+          console.log('%c⚡ JediMock intercepted', 'color:#00D4FF;font-weight:bold;font-size:12px', {
+            tab: _jmTab, pattern: _jmPattern, url,
+            status: _mockStatus, target: '${interceptTarget}', delay: _mockDelay+'ms',
+            time: new Date().toLocaleTimeString()
+          });
+          return new Response(JSON.stringify(data), {
+            status: _mockStatus,
+            headers: { "Content-Type": "application/json" }
+          });
+        } catch(e) {
+          console.log('%c⚡ JediMock error', 'color:#f87171;font-weight:bold', {
+            url,
+            error: e.message,
+            hint: 'Response merge requires a JSON response body. Switch to Replace mode for non-JSON endpoints.'
+          });
+          return res;
+        }`}
+      };
+      if(_jmFallbackMs > 0){
+        try {
+          return await Promise.race([
+            _jmRunFetchIntercept(),
+            new Promise((_, rej) => setTimeout(() => rej(new Error('jm_timeout')), _jmFallbackMs))
+          ]);
+        } catch(e) {
+          if(_jmIsFallbackError(e)) return _jmBuildFallbackResponse(url, e.message);
+          throw e;
+        }
+      }
+      return _jmRunFetchIntercept();
     }
     return _fetch(url, options);
   };
@@ -1158,7 +1351,11 @@ ${mods}
             time: new Date().toLocaleTimeString()
           });
         } catch(e) {
-          console.log('%c⚡ JediMock error', 'color:#f87171;font-weight:bold', { url, error: e.message });
+          console.log('%c⚡ JediMock error', 'color:#f87171;font-weight:bold', {
+            url,
+            error: e.message,
+            hint: 'XHR merge requires a JSON response body. Switch to Replace mode for non-JSON endpoints.'
+          });
         }
       };
       // Intercept onload property assignment (covers xhr.onload = fn pattern)
@@ -1173,7 +1370,7 @@ ${mods}
         if (this.readyState === 4) {
           _jmDoMerge();
           if (typeof _jmUserOnload === 'function') {
-            try { _jmUserOnload.call(this, new Event('load')); } catch(e) {}
+            try { _jmUserOnload.call(this, { type: 'load', target: this, currentTarget: this }); } catch(e) {}
           }
         }
       });
@@ -1181,32 +1378,6 @@ ${mods}
     }
     return _xhrSend.apply(this, arguments);
   };
-${fallbackEnabled ? `
-  // ── FALLBACK: if request never responds, return mock ──
-  const _jmFallbackMs = ${fallbackTimeout * 1000};
-  const _jmOrigFetch = window.fetch;
-  window.fetch = async function(url, options={}) {
-    if(typeof url !== 'string' || !(${_urlMatch})) return _jmOrigFetch(url, options);
-    try {
-      const res = await Promise.race([
-        _jmOrigFetch(url, options),
-        new Promise((_, rej) => setTimeout(() => rej(new Error('jm_timeout')), _jmFallbackMs))
-      ]);
-      return res;
-    } catch(e) {
-      if(e.message === 'jm_timeout' || e.message === 'Failed to fetch' || e.name === 'TypeError') {
-        console.log('%c⚡ JediMock fallback', 'color:#00D4FF;font-weight:bold;font-size:12px', { url, reason: e.message, tab: _jmTab });
-        const _fbData = ${JSON.stringify(t.data)};
-${mods.split("\n").join("\n        ")}
-        return new Response(JSON.stringify(_fbData), {
-          status: ${t.statusCode||200},
-          headers: { 'Content-Type': 'application/json' }
-        });
-      }
-      throw e;
-    }
-  };` : ``}
-
   // ── CLEANUP: restore originals on page unload ──
   window.addEventListener('beforeunload', function _jmCleanup() {
     window.fetch = _fetch;
@@ -1223,13 +1394,15 @@ ${mods.split("\n").join("\n        ")}
     const triggerUrl=t.asyncTriggerUrl||"";
     const responseMethod=t.asyncResponseMethod||"GET";
     const responseUrl=t.asyncResponseUrl||"";
-    const idField=t.asyncIdField||"";
-    // dot-notation path for body access in generated script e.g. body.data.id
-    const idPath=idField?idField.split(".").map(p=>isNaN(p)?`.${p}`:`[${p}]`).join(""):"";
+    const triggerUrlLiteral=JSON.stringify(triggerUrl);
+    const triggerMethodLiteral=JSON.stringify(triggerMethod);
+    const responseMethodLiteral=JSON.stringify(responseMethod);
+    const responseUrlLiteral=JSON.stringify(responseUrl);
+    const idFieldPath=resolveAsyncIdPath(t);
+    const idFieldLabel=t.asyncIdField||formatReadablePath(idFieldPath);
+    const idPath=idFieldPath.length?formatPath(idFieldPath):"";
     // Compute placeholder value from pasted JSON so we can replace it in the mock
-    const placeholderId = idField ? (()=>{
-      try{ let o=t.data; idField.split(".").forEach(k=>o=o[k]); return o; }catch(e){ return null; }
-    })() : null;
+    const placeholderId = idFieldPath.length ? getValueAtPath(t.data, idFieldPath) : null;
     const placeholderJson=JSON.stringify(placeholderId);
     const mockJson=JSON.stringify(t.data,null,2);
 
@@ -1259,6 +1432,8 @@ ${mods.split("\n").join("\n        ")}
     const pathPattern = hasPathStar
       ? responseUrl.replace(/[.*+?^${}()|[\]\\]/g,"\\$&").replace("\\*","([^/?]+)")
       : "";
+    const pathPatternLiteral = JSON.stringify(pathPattern);
+    const queryParamNameLiteral = JSON.stringify(queryParamName);
 
 script=`(function(){
   let _capturedId = null;
@@ -1273,17 +1448,21 @@ script=`(function(){
     });
   }
 
+  function _jmWarn(msg, extra) {
+    console.warn('%c⚠ JediMock warning', 'color:#fbbf24;font-weight:bold;font-size:12px', Object.assign({ tab: ${JSON.stringify(t.name||'Tab '+(currentTab+1))}, message: msg }, extra || {}));
+  }
+
   function _matchesResponseUrl(url) {
     if(!url.includes(${basePathEscaped})) return false;
-${hasPathStar ? `    return url.match(new RegExp("${pathPattern}"));` : `    return true;`}
+${hasPathStar ? `    return url.match(new RegExp(${pathPatternLiteral}));` : `    return true;`}
   }
 
   function _extractIdFromUrl(url) {
 ${hasQueryStar ? `    try {
       const u = new URL(url, location.href);
-      return u.searchParams.get("${queryParamName}") || null;
+      return u.searchParams.get(${queryParamNameLiteral}) || null;
     } catch(e) { return null; }` :
-hasPathStar ? `    const m = url.match(new RegExp("${pathPattern}"));
+hasPathStar ? `    const m = url.match(new RegExp(${pathPatternLiteral}));
     return m ? m[1] : null;` :
 `    return null; // ID comes from _capturedId only`}
   }
@@ -1291,7 +1470,7 @@ hasPathStar ? `    const m = url.match(new RegExp("${pathPattern}"));
   // ── ACTIVATION LOG ──
   console.log('%c⚡ JediMock active', 'color:#00D4FF;font-weight:bold;font-size:12px', {
     url: ${JSON.stringify(triggerUrl)}, mode: 'Async ID',
-    trigger: '${t.asyncTriggerMethod||"POST"}', response: ${JSON.stringify(t.asyncResponseUrl||'')}
+    trigger: '${t.asyncTriggerMethod||"POST"}', response: ${JSON.stringify(t.asyncResponseUrl||'')}, field: ${JSON.stringify(idFieldLabel)}
     ${fallbackEnabledAsync ? `, fallback: '${fallbackTimeoutAsync}s'` : ''}
   });
 
@@ -1304,17 +1483,18 @@ hasPathStar ? `    const m = url.match(new RegExp("${pathPattern}"));
   window.fetch = async (url, options={}) => {
     const method = (options.method||"GET").toUpperCase();
     // Trigger: capture ID
-    if (typeof url === "string" && url.includes("${triggerUrl}") && method === "${triggerMethod}") {
+    if (typeof url === "string" && url.includes(${triggerUrlLiteral}) && method === ${triggerMethodLiteral}) {
       const res = await _fetch(url, options);
       try {
         const body = await res.clone().json();
         _capturedId = body${idPath};
+        if(_capturedId === undefined) _jmWarn('Selected Async ID field was not found in the trigger response', { url, field: ${JSON.stringify(idFieldLabel)} });
         console.log('%c⚡ JediMock [Async] Captured ID:', 'color:#00D4FF;font-weight:bold', _capturedId);
-      } catch(e) {}
+      } catch(e) { _jmWarn('Trigger response was not valid JSON, so no Async ID was captured', { url, error: e.message }); }
       return res;
     }
     // Response: inject ID
-    if (typeof url === "string" && _matchesResponseUrl(url) && method === "${responseMethod}") {
+    if (typeof url === "string" && _matchesResponseUrl(url) && method === ${responseMethodLiteral}) {
       const id = _capturedId ?? _extractIdFromUrl(url);
       const data = JSON.parse(JSON.stringify(_mockData));
 ${mods}
@@ -1334,17 +1514,18 @@ ${mods}
     const url = this._jmUrl || "";
     const method = (this._jmMethod || "GET").toUpperCase();
     // Trigger: capture ID
-    if (url.includes("${triggerUrl}") && method === "${triggerMethod}") {
+    if (url.includes(${triggerUrlLiteral}) && method === ${triggerMethodLiteral}) {
       this.addEventListener("load", function() {
         try {
           const b = JSON.parse(this.responseText);
           _capturedId = b${idPath};
+          if(_capturedId === undefined) _jmWarn('Selected Async ID field was not found in the trigger XHR response', { url, field: ${JSON.stringify(idFieldLabel)} });
           console.log('%c⚡ JediMock [Async/XHR] Captured ID:', 'color:#00D4FF;font-weight:bold', _capturedId);
-        } catch(e) {}
+        } catch(e) { _jmWarn('Trigger XHR response was not valid JSON, so no Async ID was captured', { url, error: e.message }); }
       });
     }
     // Response: inject ID
-    if (_matchesResponseUrl(url) && method === "${responseMethod}") {
+    if (_matchesResponseUrl(url) && method === ${responseMethodLiteral}) {
       const id = _capturedId ?? _extractIdFromUrl(url);
       const data = JSON.parse(JSON.stringify(_mockData));
 ${mods}
@@ -1359,44 +1540,13 @@ ${mods}
     return _xhrSend.apply(this, arguments);
   };
 ${fallbackEnabledAsync ? `
-  // ── ASYNC FALLBACK: if response never comes, construct URL from pattern + captured ID ──
-  const _jmAsyncFallbackMs = ${fallbackTimeoutAsync * 1000};
-  const _jmAsyncOrig = window.fetch;
-  window.fetch = async function(url, options={}) {
-    // On trigger: capture ID as normal (already done above)
-    if(typeof url === 'string' && url.includes("${triggerUrl}") && (options.method||'GET').toUpperCase() === "${triggerMethod}") {
-      return _jmAsyncOrig(url, options);
-    }
-    // On response URL: race against timeout
-    if(typeof url === 'string' && _matchesResponseUrl(url) && (options.method||'GET').toUpperCase() === "${responseMethod}") {
-      try {
-        const res = await Promise.race([
-          _jmAsyncOrig(url, options),
-          new Promise((_, rej) => setTimeout(() => rej(new Error('jm_timeout')), _jmAsyncFallbackMs))
-        ]);
-        return res;
-      } catch(e) {
-        if(e.message === 'jm_timeout' || e.message === 'Failed to fetch' || e.name === 'TypeError') {
-          const id = _capturedId ?? _extractIdFromUrl(url);
-          const data = JSON.parse(JSON.stringify(_mockData));
-          if(id !== null) replaceIdInObject(data, _placeholderId, id);
-          console.log('%c⚡ JediMock [Async] fallback', 'color:#00D4FF;font-weight:bold;font-size:12px', { url, id, reason: e.message });
-          return new Response(JSON.stringify(data), {
-            status: ${t.statusCode||200},
-            headers: { 'Content-Type': 'application/json' }
-          });
-        }
-        throw e;
-      }
-    }
-    return _jmAsyncOrig(url, options);
-  };
   // FALLBACK TIMER: if response URL never fires at all, fire mock after timeout using captured ID
   setTimeout(() => {
     if(_capturedId === null) return; // no trigger fired yet
-    const responsePattern = "${responseUrl}";
+    const responsePattern = ${responseUrlLiteral};
     const constructedUrl = responsePattern.replace('*', _capturedId);
     const data = JSON.parse(JSON.stringify(_mockData));
+${mods}
     replaceIdInObject(data, _placeholderId, _capturedId);
     console.log('%c⚡ JediMock [Async] fallback timer', 'color:#00D4FF;font-weight:bold;font-size:12px', { constructedUrl, id: _capturedId });
     // Dispatch a custom event so app code listening can react
@@ -1466,13 +1616,10 @@ ${fallbackEnabledAsync ? `
   }
 }
 
-function formatPath(path){
-  return path.map(p=>isNaN(p)?`.${p}`:`[${p}]`).join('');
-}
-
 function exportConfig(){
   saveState();
-  const blob=new Blob([JSON.stringify({version:1,tabs:tabs},null,2)],{type:"application/json"});
+  const safeTabs=tabs.map((t,i)=>sanitizeTabState(t, "Tab "+(i+1)));
+  const blob=new Blob([JSON.stringify({version:1,tabs:safeTabs},null,2)],{type:"application/json"});
   const a=document.createElement("a");
   a.href=URL.createObjectURL(blob);
   a.download="jedimock-config.json";
@@ -1483,35 +1630,19 @@ function exportConfig(){
 function importConfig(event){
   const file=event.target.files[0];
   if(!file) return;
+  if(file.size > MAX_IMPORT_FILE_BYTES){
+    edFlash("⚠ Config file is too large", "var(--red)");
+    event.target.value="";
+    return;
+  }
   const reader=new FileReader();
   reader.onload=(e)=>{
     try{
       const imported=JSON.parse(e.target.result);
       if(!imported.tabs||!Array.isArray(imported.tabs)) throw new Error("Invalid format");
-      tabs=imported.tabs.map((t,i)=>({
-        name:t.name||"Tab "+(i+1),
-        data:t.data||{},
-        changes:t.changes||[],
-        deletions:t.deletions||[],
-        additions:t.additions||[],
-        url:t.url||"",
-        mode:t.mode||"fetch",
-        asyncProtocol:t.asyncProtocol||"off",
-        rawJson:t.rawJson||"",
-        script:t.script||"",
-        asyncTriggerMethod:t.asyncTriggerMethod||"POST",
-        asyncTriggerUrl:t.asyncTriggerUrl||"",
-        asyncResponseMethod:t.asyncResponseMethod||"GET",
-        asyncResponseUrl:t.asyncResponseUrl||"",
-        asyncIdField:t.asyncIdField||"",
-        asyncCaptureField:t.asyncCaptureField||"",
-        firestoreField:t.firestoreField||"",
-        firestoreValue:t.firestoreValue||"",
-        statusCode:t.statusCode||"200",
-        responseDelay:t.responseDelay||0
-      }));
+      tabs=imported.tabs.slice(0, TAB_LIMIT).map((t,i)=>sanitizeTabState(t, "Tab "+(i+1)));
       currentTab=0;
-      data={};changes=[];deletions=[];additions=[];asyncIdField="";
+      data={};changes=[];deletions=[];additions=[];asyncIdField="";asyncIdPath=[];
       loadState();
       renderTabs();
       // Flash the import label button
@@ -1563,13 +1694,14 @@ function showScriptFallback(raw){
   // Show the script in a modal so user can manually select+copy
   const overlay = document.createElement('div');
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+  const safeRaw = escHtml(raw);
   overlay.innerHTML = `
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px;max-width:700px;width:100%;max-height:80vh;display:flex;flex-direction:column;gap:12px">
       <div style="display:flex;align-items:center;justify-content:space-between">
         <span style="font-size:13px;font-weight:600;color:var(--text)">⚠ Clipboard blocked — select all and copy manually</span>
         <button onclick="this.closest('.jm-fallback-overlay').remove()" style="background:transparent;border:none;color:var(--text-dim);cursor:pointer;font-size:18px;padding:0;line-height:1">✕</button>
       </div>
-      <textarea readonly style="flex:1;min-height:300px;font-family:'SF Mono','Fira Code',monospace;font-size:11px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:10px;color:var(--text);resize:vertical;line-height:1.4" onclick="this.select()">${raw.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</textarea>
+      <textarea readonly style="flex:1;min-height:300px;font-family:'SF Mono','Fira Code',monospace;font-size:11px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:10px;color:var(--text);resize:vertical;line-height:1.4" onclick="this.select()">${safeRaw}</textarea>
       <div style="font-size:11px;color:var(--text-dim)">Click the text area, then Ctrl/⌘+A to select all, then Ctrl/⌘+C to copy.</div>
     </div>
   `;
@@ -1592,21 +1724,23 @@ function flashCopy(){
 }
 
 function resetAll(){
-  markScriptCurrent();
-  _scriptUpToDate = false;
-  tabs[currentTab]={name:"Tab "+(currentTab+1),data:{},changes:[],deletions:[],additions:[],url:"",mode:"fetch",asyncProtocol:"off",rawJson:"",script:"",asyncTriggerMethod:"POST",asyncTriggerUrl:"",asyncResponseMethod:"GET",asyncResponseUrl:"",asyncIdField:"",asyncCaptureField:"",firestoreField:"",firestoreValue:""};
+  if(!confirm("Reset this tab? This clears the URL, JSON, tree edits, and generated script for the current tab.")) return;
+  tabs[currentTab]={name:"Tab "+(currentTab+1),data:{},changes:[],deletions:[],additions:[],url:"",mode:"fetch",asyncProtocol:"off",rawJson:"",script:"",asyncTriggerMethod:"POST",asyncTriggerUrl:"",asyncResponseMethod:"GET",asyncResponseUrl:"",asyncIdField:"",asyncIdPath:[],asyncCaptureField:"",firestoreField:"",firestoreValue:""};
   data={};
   changes=[];
   deletions=[];
   additions=[];
   collapsed={};
   asyncIdField="";
+  asyncIdPath=[];
   const _ji=document.getElementById("jsonInput");
   const _ui=document.getElementById("urlInput");
   const _op=document.getElementById("output");
   if(_ji) _ji.value="";
   if(_ui) _ui.value="";
   if(_op) _op.textContent="";
+  _scriptUpToDate = false;
+  if(tabs[currentTab]) tabs[currentTab].scriptUpToDate = false;
   document.querySelector("input[name=asyncMode][value=off]").checked=true;
   document.getElementById("asyncTriggerMethod").value="POST";
   document.getElementById("asyncTriggerUrl").value="";
@@ -1615,8 +1749,19 @@ function resetAll(){
   document.getElementById("firestoreField").value="";
   document.getElementById("firestoreValue").value="";
   document.getElementById("idFieldSearch").value="";
-  document.getElementById("idFieldList").innerHTML="";
+  document.getElementById("idFieldList").replaceChildren();
   document.getElementById("idFieldSelected").textContent="";
+  const badge = document.getElementById('scriptOutdatedBadge');
+  if(badge) badge.style.display = 'none';
+  const copyBtn = document.getElementById('copyScriptBtn');
+  if(copyBtn){ copyBtn.style.opacity = ''; copyBtn.title = ''; }
+  const btn = document.getElementById('generateBtn');
+  if(btn){
+    btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg> Generate Script';
+    btn.style.background = '';
+    btn.style.color = '';
+    btn.style.border = '';
+  }
   onModeChange();
   updateChangesBadge();
   updateVisibility();
@@ -1628,24 +1773,48 @@ renderTabs();
 /* ── SHAREABLE LINK ── */
 async function compressToBase64(str){
   const bytes=new TextEncoder().encode(str);
+  if(bytes.length > MAX_SHARE_BYTES) throw new Error("Share payload is too large");
   const cs=new CompressionStream("deflate-raw");
   const writer=cs.writable.getWriter();
   writer.write(bytes);
   writer.close();
   const compressed=await new Response(cs.readable).arrayBuffer();
-  return btoa(String.fromCharCode(...new Uint8Array(compressed)))
-    .replace(/\+/g,"-").replace(/\//g,"_").replace(/=/g,"");
+  return bytesToBase64Url(new Uint8Array(compressed));
 }
 
 async function decompressFromBase64(b64){
-  const bin=atob(b64.replace(/-/g,"+").replace(/_/g,"/"));
-  const bytes=Uint8Array.from(bin,c=>c.charCodeAt(0));
+  if(!b64 || b64.length > MAX_SHARE_HASH_CHARS) throw new Error("Shared link is too large");
+  const bytes=base64UrlToBytes(b64);
+  if(bytes.length > MAX_SHARE_BYTES) throw new Error("Shared link payload is too large");
   const ds=new DecompressionStream("deflate-raw");
   const writer=ds.writable.getWriter();
   writer.write(bytes);
   writer.close();
-  const text=await new Response(ds.readable).text();
+  const reader=ds.readable.getReader();
+  const decoder=new TextDecoder();
+  let total=0;
+  let text="";
+  while(true){
+    const { value, done } = await reader.read();
+    if(done) break;
+    total += value.byteLength;
+    if(total > MAX_SHARE_BYTES){
+      reader.cancel().catch(()=>{});
+      throw new Error("Shared link expands beyond the allowed size");
+    }
+    text += decoder.decode(value, { stream: true });
+  }
+  text += decoder.decode();
   return text;
+}
+
+function showTransientToast(message, tone = "ok"){
+  const toast=document.createElement("div");
+  const color = tone === "error" ? "var(--red)" : tone === "warn" ? "var(--yellow)" : "var(--green)";
+  toast.textContent=message;
+  toast.style.cssText=`position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--surface);border:1px solid ${color};color:${color};padding:10px 20px;border-radius:8px;font-size:13px;font-weight:600;z-index:9999;transition:opacity 0.3s`;
+  document.body.appendChild(toast);
+  setTimeout(()=>{toast.style.opacity="0";setTimeout(()=>toast.remove(),300);},2500);
 }
 
 async function shareTab(){
@@ -1653,7 +1822,7 @@ async function shareTab(){
   const btn=document.getElementById("shareBtn");
   const t=tabs[currentTab];
   try{
-    const json=JSON.stringify({version:1,tab:t});
+    const json=JSON.stringify({version:1,tab:sanitizeTabState(t, t?.name || "Shared Tab")});
     const hash=await compressToBase64(json);
     const url=location.href.split("#")[0]+"#share="+hash;
     history.replaceState(null,"",url);
@@ -1679,6 +1848,7 @@ async function shareTab(){
     setTimeout(()=>{btn.innerHTML=origHTML;btn.style.color="";},2000);
   }catch(e){
     console.error("Share failed:",e);
+    edFlash("⚠ Could not create a share link: " + e.message, "var(--red)");
   }
 }
 
@@ -1691,29 +1861,7 @@ async function loadSharedTab(){
     const json=await decompressFromBase64(encoded);
     const imported=JSON.parse(json);
     if(!imported.tab) return;
-    const t=imported.tab;
-    const newTab={
-      name:t.name||"Shared Tab",
-      data:t.data||{},
-      changes:t.changes||[],
-      deletions:t.deletions||[],
-      additions:t.additions||[],
-      url:t.url||"",
-      mode:t.mode||"fetch",
-      asyncProtocol:t.asyncProtocol||"off",
-      rawJson:t.rawJson||"",
-      script:t.script||"",
-      asyncTriggerMethod:t.asyncTriggerMethod||"POST",
-      asyncTriggerUrl:t.asyncTriggerUrl||"",
-      asyncResponseMethod:t.asyncResponseMethod||"GET",
-      asyncResponseUrl:t.asyncResponseUrl||"",
-      asyncIdField:t.asyncIdField||"",
-      asyncCaptureField:t.asyncCaptureField||"",
-      firestoreField:t.firestoreField||"",
-      firestoreValue:t.firestoreValue||"",
-      statusCode:t.statusCode||"200",
-      responseDelay:t.responseDelay||0
-    };
+    const newTab=sanitizeTabState(imported.tab, "Shared Tab");
     tabs.push(newTab);
     currentTab=tabs.length-1;
     data=newTab.data||{};
@@ -1721,18 +1869,16 @@ async function loadSharedTab(){
     deletions=newTab.deletions||[];
     additions=newTab.additions||[];
     asyncIdField=newTab.asyncIdField||"";
+    asyncIdPath=resolveAsyncIdPath(newTab);
     loadState();
     renderTabs();
     // Clear hash so refresh doesn't reload it
     history.replaceState(null,"",location.href.split("#")[0]);
-    // Show toast
-    const toast=document.createElement("div");
-    toast.textContent="✓ Shared tab loaded!";
-    toast.style.cssText="position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--surface);border:1px solid var(--green);color:var(--green);padding:10px 20px;border-radius:8px;font-size:13px;font-weight:600;z-index:9999;transition:opacity 0.3s";
-    document.body.appendChild(toast);
-    setTimeout(()=>{toast.style.opacity="0";setTimeout(()=>toast.remove(),300);},2500);
+    showTransientToast("Shared tab loaded.");
   }catch(e){
     console.error("Failed to load shared tab:",e);
+    history.replaceState(null,"",location.href.split("#")[0]);
+    showTransientToast("Could not load that shared tab.", "error");
   }
 }
 
@@ -1774,12 +1920,7 @@ function duplicateTab(i){
 }
 
 function renameTab(i){
-  hideTabContextMenu();
-  if(i<0||i>=tabs.length) return;
-  const name=prompt("Rename tab:",tabs[i].name);
-  if(name===null) return;
-  tabs[i].name=name.trim()||tabs[i].name;
-  renderTabs();
+  startRenameTab(i);
 }
 
 function closeTabFromMenu(i){
@@ -1792,6 +1933,23 @@ function closeTabFromMenu(i){
 
 /* ── UTILITIES ── */
 function escHtml(s){ if(s===null||s===undefined) return ""; return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+function appendDiffRowSummary(row, pathStr, valueStr, valueClass){
+  const path = document.createElement("span");
+  path.className = "diff-path";
+  path.title = pathStr;
+  path.textContent = pathStr;
+
+  const arrow = document.createElement("span");
+  arrow.className = "diff-arrow";
+  arrow.textContent = "→";
+
+  const value = document.createElement("span");
+  value.className = valueClass;
+  value.title = valueStr;
+  value.textContent = valueStr;
+
+  row.append(path, arrow, value);
+}
 function flattenJson(obj,prefix,result={}){
   if(typeof obj!=="object"||obj===null){ result[prefix||"(root)"]=obj; return result; }
   Object.keys(obj).forEach(k=>{
@@ -1881,7 +2039,7 @@ function updateBeautGutter(side){
   if(!ta||!gt) return;
   const lines=ta.value===''?1:ta.value.split('\n').length;
   if(gt.children.length!==lines){
-    gt.innerHTML=Array.from({length:lines},(_,i)=>'<span>'+(i+1)+'</span>').join('');
+    renderLineNumberGutter(gt, lines);
   }
   gt.scrollTop=ta.scrollTop;
   if(lbl) lbl.textContent=ta.value?'('+lines+' lines)':'';
@@ -1939,29 +2097,18 @@ function clearBeaut(){
   updateBeautGutter('Input'); updateBeautGutter('Output');
 }
 
-/* ── DIFF ── */
-
-function sanitizeJson(s){
-  var result='';
-  var inString=false;
-  var escape=false;
-  for(var i=0;i<s.length;i++){
-    var ch=s[i];
-    var code=s.charCodeAt(i);
-    if(escape){ result+=ch; escape=false; continue; }
-    if(ch==='\\'){ escape=true; result+=ch; continue; }
-    if(ch==='"'){ inString=!inString; result+=ch; continue; }
-    if(inString&&code<32){
-      if(code===10) result+='\\n';
-      else if(code===13) result+='\\r';
-      else if(code===9) result+='\\t';
-      else result+='\\u'+code.toString(16).padStart(4,'0');
-      continue;
-    }
-    result+=ch;
+function renderLineNumberGutter(gutterEl, lines){
+  if(!gutterEl) return;
+  const next = [];
+  for(let i = 1; i <= lines; i++){
+    const span = document.createElement('span');
+    span.textContent = String(i);
+    next.push(span);
   }
-  return result;
+  gutterEl.replaceChildren(...next);
 }
+
+/* ── DIFF ── */
 
 let diffLines=[], diffDiffIdxs=[], diffCurrentIdx=-1;
 
@@ -1971,7 +2118,7 @@ function updateDiffGutter(side){
   if(!ta||!gt) return;
   const lines=ta.value.split('\n').length;
   if(gt.children.length!==lines){
-    gt.innerHTML=Array.from({length:lines},(_,i)=>'<span>'+(i+1)+'</span>').join('');
+    renderLineNumberGutter(gt, lines);
   }
   gt.scrollTop=ta.scrollTop;
   const lbl=document.getElementById('diff'+side+'InputLabel');
@@ -1982,7 +2129,7 @@ function editAndCompare(){
   // Show input, hide output
   document.getElementById("diffInputRow").style.display="grid";
   document.getElementById("diffOutputRow").style.display="none";
-  document.getElementById("diffStats").innerHTML="";
+  document.getElementById("diffStats").textContent="";
   document.getElementById("diffNavLabel").textContent="";
   document.querySelector('[onclick="doDiff()"]').style.display="";
   document.getElementById("editCompareBtn").style.display="none";
@@ -2029,86 +2176,6 @@ function doDiff(){
   setStatus("diffStatus","","");
 }
 
-function computeLineDiff(left, right){
-  // Standard Myers-style LCS diff
-  const m=left.length, n=right.length;
-
-  // Build LCS table
-  const dp=[];
-  for(let i=0;i<=m;i++){ dp[i]=[]; for(let j=0;j<=n;j++) dp[i][j]=0; }
-  for(let i=m-1;i>=0;i--){
-    for(let j=n-1;j>=0;j--){
-      if(left[i]===right[j]) dp[i][j]=dp[i+1][j+1]+1;
-      else dp[i][j]=Math.max(dp[i+1][j],dp[i][j+1]);
-    }
-  }
-
-  // Trace back to get edit ops: same/remove/add
-  const ops=[];
-  let i=0,j=0;
-  while(i<m||j<n){
-    if(i<m&&j<n&&left[i]===right[j]){
-      ops.push({type:'same',l:left[i],r:right[j]}); i++;j++;
-    } else if(j<n&&(i>=m||dp[i][j+1]>=dp[i+1][j])){
-      ops.push({type:'add',l:null,r:right[j]}); j++;
-    } else {
-      ops.push({type:'remove',l:left[i],r:null}); i++;
-    }
-  }
-
-  // Convert ops to pairs: group consecutive remove+add blocks and interleave them
-  const pairs=[];
-  let k=0;
-  while(k<ops.length){
-    if(ops[k].type==='same'){
-      pairs.push(ops[k]); k++;
-    } else {
-      // Collect a block of removes and adds
-      const removes=[], adds=[];
-      while(k<ops.length&&ops[k].type==='remove'){ removes.push(ops[k].l); k++; }
-      while(k<ops.length&&ops[k].type==='add'){ adds.push(ops[k].r); k++; }
-      // If we got adds before removes (can happen), collect remaining removes
-      while(k<ops.length&&ops[k].type==='remove'){ removes.push(ops[k].l); k++; }
-      // Pair them: same count = change rows, extras = pure remove/add with spacer
-      const len=Math.max(removes.length,adds.length);
-      for(let p=0;p<len;p++){
-        const l=p<removes.length?removes[p]:null;
-        const r=p<adds.length?adds[p]:null;
-        if(l!==null&&r!==null) pairs.push({type:'change',l,r});
-        else if(l!==null) pairs.push({type:'remove',l,r:null});
-        else pairs.push({type:'add',l:null,r});
-      }
-    }
-  }
-  return pairs;
-}
-
-function inlineDiff(a, b){
-  // Character-level LCS to find changed spans within a line
-  const m=a.length, n=b.length;
-  if(m===0 && n===0) return {left:'', right:''};
-  const dp=Array.from({length:m+1},()=>new Array(n+1).fill(0));
-  for(let i=m-1;i>=0;i--) for(let j=n-1;j>=0;j--){
-    dp[i][j]=a[i]===b[j]?dp[i+1][j+1]+1:Math.max(dp[i+1][j],dp[i][j+1]);
-  }
-  // Trace back
-  let lHtml='', rHtml='', i=0, j=0;
-  while(i<m||j<n){
-    if(i<m&&j<n&&a[i]===b[j]){
-      lHtml+=escHtml(a[i]); rHtml+=escHtml(b[j]); i++;j++;
-    } else {
-      // collect remove chars
-      let lChunk='', rChunk='';
-      while(i<m&&(j>=n||dp[i][j+1]<dp[i+1][j]||(dp[i][j+1]===dp[i+1][j]&&j>=n))){ lChunk+=a[i]; i++; }
-      while(j<n&&(i>=m||dp[i+1][j]<dp[i][j+1]||(dp[i+1][j]===dp[i][j+1]&&i>=m))){ rChunk+=b[j]; j++; }
-      if(!lChunk&&!rChunk&&i<m&&j<n){ lChunk=a[i++]; rChunk=b[j++]; }
-      if(lChunk) lHtml+='<mark class="diff-word-left">'+escHtml(lChunk)+'</mark>';
-      if(rChunk) rHtml+='<mark class="diff-word-right">'+escHtml(rChunk)+'</mark>';
-    }
-  }
-  return {left:lHtml, right:rHtml};
-}
-
 function renderDiff(){
   const lNums=document.getElementById("diffLeftNums");
   const rNums=document.getElementById("diffRightNums");
@@ -2138,7 +2205,7 @@ function renderDiff(){
       rNHtml+='<span>'+rLine+'</span>'; rLine++;
       lHLHtml+='<div class="diff-highlight-line diff-hl-left"></div>';
       rHLHtml+='<div class="diff-highlight-line diff-hl-right"></div>';
-      const inl=inlineDiff(p.l||'', p.r||'');
+      const inl=inlineDiff(p.l||'', p.r||'', escHtml);
       lTHtml+='<span class="diff-line diff-line-changed"'+idx+'>'+inl.left+'</span>';
       rTHtml+='<span class="diff-line diff-line-changed"'+idx+'>'+inl.right+'</span>';
     } else if(p.type==='remove'){
@@ -2257,7 +2324,7 @@ function clearDiff(){
   document.getElementById("diffInputRow").style.display="grid";
   document.getElementById("diffOutputRow").style.display="none";
   ["diffLeftNums","diffRightNums","diffLeftHL","diffRightHL","diffLeftText","diffRightText"].forEach(id=>{
-    const el=document.getElementById(id); if(el) el.innerHTML="";
+    const el=document.getElementById(id); if(el) el.replaceChildren();
   });
   document.getElementById("diffStats").textContent="";
   document.getElementById("diffStatus").textContent="";
@@ -2279,7 +2346,7 @@ function updateValidGutter(){
   if(!ta||!gt) return;
   const lines = ta.value==='' ? 1 : ta.value.split("\n").length;
   if(gt.children.length !== lines)
-    gt.innerHTML = Array.from({length:lines},(_,i)=>`<span>${i+1}</span>`).join("");
+    renderLineNumberGutter(gt, lines);
   gt.scrollTop = ta.scrollTop;
   if(lbl) lbl.textContent = ta.value ? `(${lines} lines)` : "";
 }
@@ -2288,14 +2355,23 @@ function updateValidGutter(){
 function renderValidHighlights(errorLineSet){
   const hl = document.getElementById("validHL");
   if(!hl) return;
-  if(!errorLineSet || errorLineSet.size===0){ hl.innerHTML=""; return; }
+  if(!errorLineSet || errorLineSet.size===0){ hl.replaceChildren(); return; }
   const lineH = 20;
-  let html = "";
+  const blocks = [];
   errorLineSet.forEach(ln=>{
     const top = (ln-1)*lineH;
-    html += `<div data-vline="${ln}" style="position:absolute;left:0;right:0;top:${top}px;height:${lineH}px;background:rgba(248,113,113,0.18);pointer-events:none"></div>`;
+    const block = document.createElement("div");
+    block.dataset.vline = String(ln);
+    block.style.position = "absolute";
+    block.style.left = "0";
+    block.style.right = "0";
+    block.style.top = top + "px";
+    block.style.height = lineH + "px";
+    block.style.background = "rgba(248,113,113,0.18)";
+    block.style.pointerEvents = "none";
+    blocks.push(block);
   });
-  hl.innerHTML = html;
+  hl.replaceChildren(...blocks);
 }
 
 function setValidCurrentHighlight(lineNum){
@@ -2515,7 +2591,7 @@ function doValidate(){
     status.textContent="Paste JSON and click Validate";
     status.style.color="var(--text-muted)";
     stats.style.display="none";
-    errors.innerHTML="";
+    errors.replaceChildren();
     wrap.style.borderColor="";
     document.getElementById("validPrevBtn").style.display="none";
     document.getElementById("validNextBtn").style.display="none";
@@ -2524,7 +2600,8 @@ function doValidate(){
 
   try{
     const parsed=JSON.parse(sanitizeJson(v));
-    status.innerHTML="<span style='color:var(--green)'>✓ Valid JSON</span>";
+    status.textContent="✓ Valid JSON";
+    status.style.color="var(--green)";
     wrap.style.borderColor="var(--green)";
     const flat=flattenJson(parsed,"");
     const keys=Object.keys(flat).length;
@@ -2532,23 +2609,46 @@ function doValidate(){
     const size=new Blob([v]).size;
     const root=Array.isArray(parsed)?"Array":typeof parsed==="object"?"Object":typeof parsed;
     stats.style.display="flex";
-    stats.innerHTML=
-      "<div class='valid-stat'><strong>"+keys+"</strong> fields</div>"+
-      "<div class='valid-stat'><strong>"+depth+"</strong> max depth</div>"+
-      "<div class='valid-stat'><strong>"+formatBytes(size)+"</strong></div>"+
-      "<div class='valid-stat'><strong>"+root+"</strong> root</div>";
-    errors.innerHTML="<div style='color:var(--green);padding:12px 14px;font-family:\"SF Mono\",monospace;font-size:12px'>All "+v.split('\n').length+" lines valid ✓</div>";
+    const statItems = [
+      [String(keys), " fields"],
+      [String(depth), " max depth"],
+      [formatBytes(size), ""],
+      [root, " root"]
+    ].map(([value, suffix])=>{
+      const item = document.createElement("div");
+      item.className = "valid-stat";
+      const strong = document.createElement("strong");
+      strong.textContent = value;
+      item.appendChild(strong);
+      if(suffix) item.appendChild(document.createTextNode(suffix));
+      return item;
+    });
+    stats.replaceChildren(...statItems);
+    const okRow = document.createElement("div");
+    okRow.style.color = "var(--green)";
+    okRow.style.padding = "12px 14px";
+    okRow.style.fontFamily = "\"SF Mono\",monospace";
+    okRow.style.fontSize = "12px";
+    okRow.textContent = "All " + v.split('\n').length + " lines valid ✓";
+    errors.replaceChildren(okRow);
     document.getElementById("validPrevBtn").style.display="none";
     document.getElementById("validNextBtn").style.display="none";
   }catch(e){
     const errs = lintJson(v);
     const count = errs.length;
-    status.innerHTML="<span style='color:var(--red)'>✕ "+(count>0?count+" error"+(count>1?"s":""):"Invalid JSON")+"</span>";
+    status.textContent="✕ " + (count>0 ? count+" error"+(count>1?"s":"") : "Invalid JSON");
+    status.style.color="var(--red)";
     wrap.style.borderColor="var(--red)";
     stats.style.display="none";
 
     if(count===0){
-      errors.innerHTML="<div style='padding:12px 14px;color:var(--red);font-family:\"SF Mono\",monospace;font-size:12px'>"+escHtml(e.message)+"</div>";
+      const row = document.createElement("div");
+      row.style.padding = "12px 14px";
+      row.style.color = "var(--red)";
+      row.style.fontFamily = "\"SF Mono\",monospace";
+      row.style.fontSize = "12px";
+      row.textContent = e.message;
+      errors.replaceChildren(row);
       return;
     }
 
@@ -2559,19 +2659,52 @@ function doValidate(){
     validErrorLines  = [...errLineSet].sort((a,b)=>a-b);
     renderValidHighlights(errLineSet);
 
-    let html = errs.map((err,idx)=>`
-      <div onclick="validJumpTo(${idx})"
-           data-erridx="${idx}"
-           style="display:flex;gap:0;padding:7px 14px;border-bottom:1px solid rgba(248,113,113,0.12);cursor:pointer;align-items:flex-start"
-           onmouseover="this.style.background='rgba(248,113,113,0.07)'"
-           onmouseout="this.style.background=''">
-        <span style="min-width:72px;font-family:'SF Mono',monospace;font-size:12px;color:var(--red);font-weight:600;flex-shrink:0">→ L${err.line}</span>
-        <span style="flex:1;min-width:0">
-          <div style="font-size:11px;color:var(--text-muted);margin-bottom:2px">${escHtml(err.msg)}</div>
-          <div style="font-family:'SF Mono',monospace;font-size:12px;color:var(--text);white-space:pre;overflow:hidden;text-overflow:ellipsis">${escHtml(err.text)}</div>
-        </span>
-      </div>`).join('');
-    errors.innerHTML = html;
+    const errorRows = errs.map((err,idx)=>{
+      const row = document.createElement("div");
+      row.dataset.erridx = String(idx);
+      row.style.display = "flex";
+      row.style.gap = "0";
+      row.style.padding = "7px 14px";
+      row.style.borderBottom = "1px solid rgba(248,113,113,0.12)";
+      row.style.cursor = "pointer";
+      row.style.alignItems = "flex-start";
+      row.onclick = ()=>validJumpTo(idx);
+      row.onmouseover = ()=>{ row.style.background = "rgba(248,113,113,0.07)"; };
+      row.onmouseout = ()=>{ row.style.background = ""; };
+
+      const line = document.createElement("span");
+      line.style.minWidth = "72px";
+      line.style.fontFamily = "'SF Mono',monospace";
+      line.style.fontSize = "12px";
+      line.style.color = "var(--red)";
+      line.style.fontWeight = "600";
+      line.style.flexShrink = "0";
+      line.textContent = "→ L" + err.line;
+
+      const body = document.createElement("span");
+      body.style.flex = "1";
+      body.style.minWidth = "0";
+
+      const msg = document.createElement("div");
+      msg.style.fontSize = "11px";
+      msg.style.color = "var(--text-muted)";
+      msg.style.marginBottom = "2px";
+      msg.textContent = err.msg;
+
+      const text = document.createElement("div");
+      text.style.fontFamily = "'SF Mono',monospace";
+      text.style.fontSize = "12px";
+      text.style.color = "var(--text)";
+      text.style.whiteSpace = "pre";
+      text.style.overflow = "hidden";
+      text.style.textOverflow = "ellipsis";
+      text.textContent = err.text;
+
+      body.append(msg, text);
+      row.append(line, body);
+      return row;
+    });
+    errors.replaceChildren(...errorRows);
 
     document.getElementById("validPrevBtn").style.display="";
     document.getElementById("validNextBtn").style.display="";
@@ -2770,7 +2903,7 @@ function clearValid(){
   document.getElementById("validStatus").textContent="Paste JSON and click Validate";
   document.getElementById("validStatus").style.color="var(--text-muted)";
   document.getElementById("validStats").style.display="none";
-  document.getElementById("validErrors").innerHTML="";
+  document.getElementById("validErrors").replaceChildren();
   document.getElementById("validInputWrap").style.borderColor="";
   document.getElementById("validNavLabel").textContent="";
   document.getElementById("validPrevBtn").style.display="none";
@@ -2985,10 +3118,28 @@ function edClear(){
   edHistory = [];
   edSelected = new Set();
   edCollapsed = {};
-  document.getElementById('edTree').innerHTML = '<div class="editor-empty"><div class="editor-empty-icon">✎</div><div>Paste JSON above and click <strong>Load JSON</strong></div></div>';
+  const tree = document.getElementById('edTree');
+  if(tree){
+    const empty = document.createElement('div');
+    empty.className = 'editor-empty';
+    const icon = document.createElement('div');
+    icon.className = 'editor-empty-icon';
+    icon.textContent = '✎';
+    const text = document.createElement('div');
+    text.textContent = 'Paste JSON above and click Load JSON';
+    empty.append(icon, text);
+    tree.replaceChildren(empty);
+  }
   document.getElementById('edStats').textContent = '';
-  document.getElementById('edHistory').innerHTML = '<div class="history-empty">No operations yet</div>';
-  document.getElementById('edRemoveSuggestions').innerHTML = '';
+  const history = document.getElementById('edHistory');
+  if(history){
+    const empty = document.createElement('div');
+    empty.className = 'history-empty';
+    empty.textContent = 'No operations yet';
+    history.replaceChildren(empty);
+  }
+  const removeSuggestions = document.getElementById('edRemoveSuggestions');
+  if(removeSuggestions) removeSuggestions.replaceChildren();
   edBuildLevelSelect();
   edUpdateScopeInfo();
 }
@@ -3027,7 +3178,7 @@ function edBuildLevelSelect(){
   const sel = document.getElementById('edLevelSelect');
   if(!sel) return;
   const maxD = edData ? edGetMaxDepth(edData) : 1;
-  sel.innerHTML = '';
+  sel.replaceChildren();
 
   // None — default
   const noneOpt = document.createElement('option');
@@ -3111,7 +3262,7 @@ function _edToggleSelectModeOld(){} // replaced by edToggleSelectMode in new fea
 function edRenderTree(){
   const container = document.getElementById('edTree');
   if(!edData){ return; }
-  container.innerHTML = '';
+  container.replaceChildren();
   // For huge JSON, cap rendering to avoid stack overflow
   const totalKeys = (function countAll(o){ if(typeof o!=='object'||!o) return 1; return Object.values(o).reduce((s,v)=>s+countAll(v),0); })(edData);
   if(totalKeys > 5000){
@@ -3129,7 +3280,7 @@ function edRenderHugeTree(container){
   // For huge JSON: render only the first level, with expand-on-click
   const banner = document.createElement('div');
   banner.style.cssText = 'padding:8px 12px;background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.3);border-radius:6px;margin-bottom:8px;font-size:12px;color:var(--text-muted)';
-  banner.innerHTML = '⚡ Large JSON detected — showing top-level only. Click any node to expand it. Use bulk ops normally.';
+  banner.textContent = '⚡ Large JSON detected — showing top-level only. Click any node to expand it. Use bulk ops normally.';
   container.appendChild(banner);
   // Render only depth 1
   edWalkShallow(edData, [], container, 1);
@@ -3591,7 +3742,7 @@ function edUpdateRemoveSuggestions(){
   const containers = edGetContainersForLevel();
   const keySet = new Set();
   containers.forEach(c=>{ if(c.obj&&typeof c.obj==='object'&&!Array.isArray(c.obj)){ Object.keys(c.obj).forEach(k=>keySet.add(k)); } });
-  container.innerHTML='';
+  container.replaceChildren();
   [...keySet].slice(0,12).forEach(k=>{
     const pill = document.createElement('span');
     pill.className='id-field-pill';
@@ -3606,14 +3757,32 @@ function edUpdateRemoveSuggestions(){
 function edRenderHistory(){
   const el = document.getElementById('edHistory');
   if(!el) return;
-  if(edHistory.length===0){ el.innerHTML='<div class="history-empty">No operations yet</div>'; return; }
-  el.innerHTML = '';
+  if(edHistory.length===0){
+    const empty = document.createElement('div');
+    empty.className = 'history-empty';
+    empty.textContent = 'No operations yet';
+    el.replaceChildren(empty);
+    return;
+  }
+  el.replaceChildren();
   edHistory.forEach((item,idx)=>{
     const row = document.createElement('div');
     row.className = 'history-item';
-    row.innerHTML = `<span class="history-item-icon">${item.icon}</span>
-      <span class="history-item-desc" title="${item.desc}">${item.desc}</span>
-      ${idx===0?`<button class="history-undo-btn" onclick="edUndo()">↩</button>`:''}`;
+    const icon = document.createElement('span');
+    icon.className = 'history-item-icon';
+    icon.textContent = item.icon;
+    const desc = document.createElement('span');
+    desc.className = 'history-item-desc';
+    desc.title = item.desc;
+    desc.textContent = item.desc;
+    row.append(icon, desc);
+    if(idx===0){
+      const undo = document.createElement('button');
+      undo.className = 'history-undo-btn';
+      undo.textContent = '↩';
+      undo.onclick = ()=>edUndo();
+      row.appendChild(undo);
+    }
     el.appendChild(row);
   });
 }
@@ -3923,7 +4092,10 @@ function edSendToBeautifier(){
 // Status bar helper
 function edSetStatus(msg, color='var(--text-dim)'){
   const el=document.getElementById('edStatusBar');
-  if(el){ el.innerHTML=`<span style="color:${color}">${msg}</span>`; }
+  if(el){
+    el.textContent=msg;
+    el.style.color=color;
+  }
 }
 
 /* ── SEARCH ── */
@@ -4136,8 +4308,34 @@ function edDedupeBlocks(){
 }
 
 /* ── ANALYTICS ── */
+function edMakeAnalyticsSection(title, color){
+  const section = document.createElement('div');
+  section.className = 'ed-analytics-section';
+  const heading = document.createElement('div');
+  heading.className = 'ed-analytics-title';
+  if(color) heading.style.color = color;
+  heading.textContent = title;
+  section.appendChild(heading);
+  return section;
+}
+
+function edMakeAnalyticsRow(keyText, valueText, valueClass){
+  const row = document.createElement('div');
+  row.className = 'ed-analytics-row';
+  const key = document.createElement('span');
+  key.className = 'ed-analytics-key';
+  key.textContent = keyText;
+  const value = document.createElement('span');
+  value.className = valueClass || 'ed-analytics-val';
+  value.textContent = valueText;
+  row.append(key, value);
+  return row;
+}
+
 function edRunAnalytics(){
-  if(!edData){ document.getElementById('edAnalyticsOut').textContent='Load JSON first.'; return; }
+  const out = document.getElementById('edAnalyticsOut');
+  if(!out) return;
+  if(!edData){ out.textContent='Load JSON first.'; return; }
   const containers=edGetContainersForLevel();
   const allKeys=new Set();
   const keyTypes={}; // key → {string:n, number:n, ...}
@@ -4160,61 +4358,100 @@ function edRunAnalytics(){
   });
 
   const total=containers.length;
-  let html=`<div class="ed-analytics-section">
-    <div class="ed-analytics-title">Overview</div>
-    <div class="ed-analytics-row"><span class="ed-analytics-key">Total blocks at level ${edLevel}</span><span class="ed-analytics-val">${total}</span></div>
-    <div class="ed-analytics-row"><span class="ed-analytics-key">Unique keys</span><span class="ed-analytics-val">${allKeys.size}</span></div>
-  </div>`;
+  if(total===0){
+    const empty = document.createElement('div');
+    empty.style.color = 'var(--text-dim)';
+    empty.textContent = 'No blocks at this level. Try changing the scope level.';
+    out.replaceChildren(empty);
+    return;
+  }
 
-  if(total===0){ document.getElementById('edAnalyticsOut').innerHTML='<div style="color:var(--text-dim)">No blocks at this level. Try changing the scope level.</div>'; return; }
+  const fragments = [];
+  const overview = edMakeAnalyticsSection('Overview');
+  overview.appendChild(edMakeAnalyticsRow(`Total blocks at level ${edLevel}`, String(total)));
+  overview.appendChild(edMakeAnalyticsRow('Unique keys', String(allKeys.size)));
+  fragments.push(overview);
 
-  // Per-key breakdown
-  html+=`<div class="ed-analytics-section"><div class="ed-analytics-title">Field Report</div>`;
+  const report = edMakeAnalyticsSection('Field Report');
   [...allKeys].sort().forEach(k=>{
     const missing=keyMissing[k]||0;
     const present=total-missing;
     const pct=Math.round(present/total*100);
     const types=keyTypes[k]||{};
-    const typeBadges=Object.entries(types).map(([t,n])=>`<span class="ed-type-badge ed-type-${t}">${t}${n>1?' ×'+n:''}</span>`).join(' ');
     const vals=keyVals[k]||new Map();
     const topVals=[...vals.entries()].sort((a,b)=>b[1]-a[1]).slice(0,3).map(([v,n])=>`${v}×${n}`).join(', ');
 
-    html+=`<div style="padding:6px 0;border-bottom:1px solid rgba(255,255,255,.05)">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">
-        <span class="ed-analytics-key">${k}</span>
-        <span style="display:flex;gap:4px;align-items:center">
-          ${missing?`<span class="ed-missing-badge">missing ${missing}</span>`:''}
-          ${typeBadges}
-        </span>
-      </div>
-      <div class="ed-analytics-bar" style="width:${pct}%;opacity:.7"></div>
-      <div style="font-size:10px;color:var(--text-dim);margin-top:3px">${present}/${total} blocks · Top: ${topVals||'—'}</div>
-    </div>`;
+    const block = document.createElement('div');
+    block.style.padding = '6px 0';
+    block.style.borderBottom = '1px solid rgba(255,255,255,.05)';
+
+    const header = document.createElement('div');
+    header.style.display = 'flex';
+    header.style.justifyContent = 'space-between';
+    header.style.alignItems = 'center';
+    header.style.marginBottom = '3px';
+
+    const key = document.createElement('span');
+    key.className = 'ed-analytics-key';
+    key.textContent = k;
+
+    const badges = document.createElement('span');
+    badges.style.display = 'flex';
+    badges.style.gap = '4px';
+    badges.style.alignItems = 'center';
+
+    if(missing){
+      const missingBadge = document.createElement('span');
+      missingBadge.className = 'ed-missing-badge';
+      missingBadge.textContent = `missing ${missing}`;
+      badges.appendChild(missingBadge);
+    }
+    Object.entries(types).forEach(([t,n])=>{
+      const badge = document.createElement('span');
+      badge.className = `ed-type-badge ed-type-${t}`;
+      badge.textContent = t + (n>1 ? ` ×${n}` : '');
+      badges.appendChild(badge);
+    });
+    header.append(key, badges);
+
+    const bar = document.createElement('div');
+    bar.className = 'ed-analytics-bar';
+    bar.style.width = `${pct}%`;
+    bar.style.opacity = '.7';
+
+    const foot = document.createElement('div');
+    foot.style.fontSize = '10px';
+    foot.style.color = 'var(--text-dim)';
+    foot.style.marginTop = '3px';
+    foot.textContent = `${present}/${total} blocks · Top: ${topVals||'—'}`;
+
+    block.append(header, bar, foot);
+    report.appendChild(block);
   });
-  html+=`</div>`;
+  fragments.push(report);
 
   // Type inconsistencies
   const inconsistent=[...allKeys].filter(k=>Object.keys(keyTypes[k]||{}).length>1);
   if(inconsistent.length){
-    html+=`<div class="ed-analytics-section"><div class="ed-analytics-title" style="color:var(--red)">⚠ Type Inconsistencies</div>`;
+    const section = edMakeAnalyticsSection('⚠ Type Inconsistencies', 'var(--red)');
     inconsistent.forEach(k=>{
       const types=Object.entries(keyTypes[k]).map(([t,n])=>`${t}×${n}`).join(', ');
-      html+=`<div class="ed-analytics-row"><span class="ed-analytics-key">${k}</span><span class="ed-analytics-warn">${types}</span></div>`;
+      section.appendChild(edMakeAnalyticsRow(k, types, 'ed-analytics-warn'));
     });
-    html+=`</div>`;
+    fragments.push(section);
   }
 
   // Missing fields
   const missing=Object.entries(keyMissing).filter(([,n])=>n>0).sort((a,b)=>b[1]-a[1]);
   if(missing.length){
-    html+=`<div class="ed-analytics-section"><div class="ed-analytics-title" style="color:var(--red)">⚠ Missing Fields</div>`;
+    const section = edMakeAnalyticsSection('⚠ Missing Fields', 'var(--red)');
     missing.forEach(([k,n])=>{
-      html+=`<div class="ed-analytics-row"><span class="ed-analytics-key">${k}</span><span class="ed-analytics-warn">missing in ${n} block${n!==1?'s':''}</span></div>`;
+      section.appendChild(edMakeAnalyticsRow(k, `missing in ${n} block${n!==1?'s':''}`, 'ed-analytics-warn'));
     });
-    html+=`</div>`;
+    fragments.push(section);
   }
 
-  document.getElementById('edAnalyticsOut').innerHTML=html;
+  out.replaceChildren(...fragments);
   edFlash(`✓ Analysis complete — ${allKeys.size} keys across ${total} blocks`);
 }
 
@@ -4618,17 +4855,16 @@ function _doSave(){
   try{
     // Flush current DOM state into tabs array before saving
     if(typeof saveState === 'function') saveState();
-    const payload = {
-      v: STORAGE_VERSION,
-      ts: Date.now(),
-      tabs: tabs,
-      currentTab: currentTab,
+    const payload = buildSessionPayload({
+      storageVersion: STORAGE_VERSION,
+      tabs,
+      currentTab,
       activeTool: document.querySelector('.sidebar-nav-btn.active')?.id?.replace('nav-','') || 'mock',
       theme: document.documentElement.getAttribute('data-theme') || 'dark',
       editorJson: edData ? JSON.stringify(edData) : null,
       validatorInput: document.getElementById('validInput')?.value || '',
-      beautInput: document.getElementById('beautInput')?.value || '',
-    };
+      beautInput: document.getElementById('beautInput')?.value || ''
+    });
     localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
     _lastSaved = Date.now();
   } catch(e){
@@ -4641,8 +4877,12 @@ function restoreSession(){
   try{
     const raw = localStorage.getItem(STORAGE_KEY);
     if(!raw) return false;
-    const payload = JSON.parse(raw);
-    if(!payload || payload.v !== STORAGE_VERSION) return false;
+    const payload = sanitizeStoredPayload(JSON.parse(raw), {
+      storageVersion: STORAGE_VERSION,
+      tabLimit: TAB_LIMIT,
+      sanitizeTabState
+    });
+    if(!payload) return false;
 
     // Restore theme first (no flash)
     if(payload.theme){
@@ -4902,33 +5142,6 @@ function loadRulesFromTab(){
   renderRules();
 }
 
-/* Generate rules array as JS for the script */
-function generateRulesScript(rules, mainJsonVar){
-  if(!rules || rules.length === 0) return '';
-  return `
-  // Response rules — stateful per-call mocking
-  let _jmCallCount = 0;
-  const _jmRules = ${JSON.stringify(rules)};
-
-  function _jmGetResponse(_jmData){
-    _jmCallCount++;
-    // Find matching rule (last match wins)
-    let matched = null;
-    for(const r of _jmRules){
-      if(r.type==='always') matched = r;
-      else if(r.type==='exact' && _jmCallCount===r.call) matched = r;
-      else if(r.type==='after' && _jmCallCount>r.call) matched = r;
-    }
-    if(!matched) return { data:_jmData, status:${200}, delay:0 };
-    const data = matched.json ? JSON.parse(matched.json) : _jmData;
-    console.log('%c⚡ JediMock rule matched', 'color:#00D4FF;font-weight:bold;font-size:12px', {
-      rule: matched.type==='exact'?'Call #'+matched.call : matched.type==='after'?'After #'+matched.call : 'Always',
-      status: matched.status, call: _jmCallCount
-    });
-    return { data, status:matched.status, delay:matched.delay||0 };
-  }
-`;
-}
 /* end response rules */
 
 
@@ -5066,7 +5279,7 @@ function onTargetChange(){
 
 function getRequestBodyMods(){
   if(reqData && Object.keys(reqData).length > 0){
-    return JSON.parse(JSON.stringify(reqData));
+    return buildTrackedObject(reqData, reqChanges, reqDeletions, reqAdditions);
   }
   const ta = document.getElementById('requestBodyInput');
   if(ta && ta.value.trim()){
@@ -5285,14 +5498,14 @@ function updateReqChangesBadge(){
   if(!panel || !list) return;
   if(total===0){ panel.classList.add('hidden'); return; }
   panel.classList.remove('hidden');
-  list.innerHTML = '';
+  list.replaceChildren();
 
   reqChanges.forEach(ch => {
     const row = document.createElement('div');
     row.className = 'diff-row';
     const pathStr = ch.path.map(p=>isNaN(p)?p:`[${p}]`).join('.');
     const newStr = typeof ch.value==='string' ? `"${ch.value}"` : String(ch.value);
-    row.innerHTML = `<span class="diff-path" title="${pathStr}">${pathStr}</span><span class="diff-arrow">→</span><span class="diff-val" title="${newStr}">${newStr}</span>`;
+    appendDiffRowSummary(row, pathStr, newStr, 'diff-val');
     const resetBtn = document.createElement('button');
     resetBtn.className = 'diff-reset-btn'; resetBtn.title = 'Restore'; resetBtn.textContent = '↺';
     resetBtn.onclick = () => {
@@ -5308,7 +5521,7 @@ function updateReqChangesBadge(){
     const row = document.createElement('div');
     row.className = 'diff-row';
     const pathStr = path.map(p=>isNaN(p)?p:`[${p}]`).join('.');
-    row.innerHTML = `<span class="diff-path" title="${pathStr}">${pathStr}</span><span class="diff-arrow">→</span><span class="diff-val-del">deleted</span>`;
+    appendDiffRowSummary(row, pathStr, 'deleted', 'diff-val-del');
     const undoBtn = document.createElement('button');
     undoBtn.className = 'diff-reset-btn'; undoBtn.title = 'Undo deletion'; undoBtn.textContent = '↺';
     undoBtn.onclick = () => {
@@ -5324,7 +5537,7 @@ function updateReqChangesBadge(){
     row.className = 'diff-row';
     const pathStr = a.path.map(p=>isNaN(p)?p:`[${p}]`).join('.');
     const valStr = typeof a.value==='string' ? `"${a.value}"` : String(a.value);
-    row.innerHTML = `<span class="diff-path" title="${pathStr}">${pathStr}</span><span class="diff-arrow">→</span><span class="diff-val-add">${valStr} (added)</span>`;
+    appendDiffRowSummary(row, pathStr, `${valStr} (added)`, 'diff-val-add');
     list.appendChild(row);
   });
 }
@@ -5332,7 +5545,7 @@ function updateReqChangesBadge(){
 function renderReqTree(){
   const container = document.getElementById('reqViewerSection');
   if(!container) return;
-  container.innerHTML = '';
+  container.replaceChildren();
   walkReq(reqData, [], container);
   updateReqChangesBadge();
 }
@@ -5533,11 +5746,9 @@ function walkReq(obj, path, parent){
           input.className = 'inline-edit';
           input.value = typeof original === 'string' ? original : String(original);
 
-          div.innerHTML = '';
           div.style.display = 'flex';
           div.style.alignItems = 'center';
-          div.appendChild(keySpan);
-          div.appendChild(input);
+          div.replaceChildren(keySpan, input);
           input.focus();
           input.select();
 
@@ -5791,7 +6002,7 @@ function renderCustomTemplates(){
   const container = document.getElementById('customTemplatePills');
   if(!container) return;
   const templates = loadCustomTemplates();
-  container.innerHTML = '';
+  container.replaceChildren();
   if(templates.length === 0){ container.style.display = 'none'; return; }
   container.style.display = 'flex';
   templates.forEach(t => {
@@ -5950,29 +6161,47 @@ function _jmBuildMeta(t, target, responseMode, rulesEnabled, rules){
   const meta = document.getElementById('scriptMeta');
   if(!meta) return;
   const isAsync = (t.asyncProtocol||'off') !== 'off';
-  const lines = [];
+  const rows = [];
+  const addRow = (label, value, options={})=>{
+    const row = document.createElement('div');
+    const labelEl = document.createElement('span');
+    labelEl.style.color = 'var(--text-dim)';
+    labelEl.textContent = label;
+    row.appendChild(labelEl);
+    row.appendChild(document.createTextNode(' '));
+
+    let valueEl;
+    if(options.code){
+      valueEl = document.createElement('code');
+      valueEl.style.color = 'var(--accent)';
+    } else if(options.emphasis){
+      valueEl = document.createElement('span');
+      valueEl.style.color = 'var(--accent)';
+      valueEl.style.fontWeight = '600';
+    } else {
+      valueEl = document.createElement('span');
+    }
+    valueEl.textContent = value;
+    row.appendChild(valueEl);
+    rows.push(row);
+  };
 
   if(isAsync){
-    lines.push(`<span style="color:var(--text-dim)">Mode</span> &nbsp; Async ID`);
-    lines.push(`<span style="color:var(--text-dim)">Trigger</span> &nbsp; <code style="color:var(--accent)">${t.asyncTriggerMethod||'POST'} ${t.asyncTriggerUrl||'—'}</code>`);
-    lines.push(`<span style="color:var(--text-dim)">Response URL</span> &nbsp; <code style="color:var(--accent)">${t.asyncResponseUrl||'—'}</code>`);
-    if(t.fallbackEnabledAsync)
-      lines.push(`<span style="color:var(--text-dim)">Fallback</span> &nbsp; <span style="color:var(--accent);font-weight:600">${t.fallbackTimeoutAsync||30}s</span>`);
+    addRow('Mode', 'Async ID');
+    addRow('Trigger', `${t.asyncTriggerMethod||'POST'} ${t.asyncTriggerUrl||'—'}`, { code: true });
+    addRow('Response URL', t.asyncResponseUrl||'—', { code: true });
+    if(t.fallbackEnabledAsync) addRow('Fallback', `${t.fallbackTimeoutAsync||30}s`, { emphasis: true });
   } else {
-    lines.push(`<span style="color:var(--text-dim)">URL pattern</span> &nbsp; <code style="color:var(--accent)">${t.url||'—'}</code>`);
-    lines.push(`<span style="color:var(--text-dim)">Target</span> &nbsp; ${target.charAt(0).toUpperCase()+target.slice(1)}`);
-    if(target !== 'request')
-      lines.push(`<span style="color:var(--text-dim)">Response</span> &nbsp; ${responseMode === 'replace' ? 'Replace entirely' : 'Merge changes'}`);
-    if(target !== 'response')
-      lines.push(`<span style="color:var(--text-dim)">Request body</span> &nbsp; Modify`);
-    if(rulesEnabled && rules.length > 0)
-      lines.push(`<span style="color:var(--text-dim)">Rules</span> &nbsp; <span style="color:var(--accent);font-weight:600">${rules.length} active</span>`);
-    lines.push(`<span style="color:var(--text-dim)">Status</span> &nbsp; ${t.statusCode||200}${t.responseDelay>0?' · '+t.responseDelay+'ms delay':''}`);
-    if(t.fallbackEnabled)
-      lines.push(`<span style="color:var(--text-dim)">Fallback</span> &nbsp; <span style="color:var(--accent);font-weight:600">${t.fallbackTimeout||30}s</span>`);
+    addRow('URL pattern', t.url||'—', { code: true });
+    addRow('Target', target.charAt(0).toUpperCase()+target.slice(1));
+    if(target !== 'request') addRow('Response', responseMode === 'replace' ? 'Replace entirely' : 'Merge changes');
+    if(target !== 'response') addRow('Request body', 'Modify');
+    if(rulesEnabled && rules.length > 0) addRow('Rules', `${rules.length} active`, { emphasis: true });
+    addRow('Status', `${t.statusCode||200}${t.responseDelay>0?' · '+t.responseDelay+'ms delay':''}`);
+    if(t.fallbackEnabled) addRow('Fallback', `${t.fallbackTimeout||30}s`, { emphasis: true });
   }
 
-  meta.innerHTML = lines.join('<br>');
+  meta.replaceChildren(...rows);
 }
 
 /* end obfuscation */

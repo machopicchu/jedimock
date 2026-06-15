@@ -2,7 +2,7 @@
 
 A browser-based developer & QA toolkit for mocking APIs, editing JSON, validating, beautifying and comparing data — all in one app.
 
-**No dependencies · No backend · No install · [jedimock.com](https://jedimock.com)**
+**No npm dependencies · No backend · No install · [jedimock.com](https://jedimock.com)**
 
 ---
 
@@ -65,6 +65,7 @@ Intercept fetch and XHR requests in your browser and return custom JSON response
 - Up to 100 tabs, each with independent configuration
 - Import / Export config as JSON
 - Share a tab as a compressed URL
+- Offline Test Lab page for validating generated scripts against a fake fetch/XHR backend
 
 ---
 
@@ -145,8 +146,6 @@ Lint JSON with accurate line-level error reporting.
 | `Ctrl/⌘ + Enter` | Generate script (Mock) |
 | `Ctrl/⌘ + Shift + V` | Import cURL |
 | `Ctrl/⌘ + F` | Search tree (Editor) |
-| `Ctrl/⌘ + Shift + E` | Expand all (Editor) |
-| `Ctrl/⌘ + Shift + C` | Collapse all (Editor) |
 | `?` | Show shortcuts panel |
 | `Esc` | Close modal / exit fullscreen |
 
@@ -179,6 +178,23 @@ JediMock stores nothing on any server. All data lives in your browser via `local
 
 ---
 
+## 🧪 Test Lab
+
+Open [`test-lab.html`](./test-lab.html) to validate generated scripts against a built-in fake backend.
+
+- Works offline — no real backend required
+- Covers `fetch`, `XMLHttpRequest`, hanging endpoints for fallback mode, and Async ID trigger/response flows
+- Useful for quickly checking request-body edits, response edits, and response rules before using a script on a real app
+
+## 📦 Recent Release Notes
+
+- Fixed fallback script generation so fallback edits apply to the correct mock object
+- Included request-tree edits in generated request-body mocks
+- Hardened share/import/session restore with safer state sanitizing and size limits
+- Improved the Test Lab UI and feedback so probe runs are easier to see
+
+---
+
 ## 🌍 Browser Support
 
 | Feature | Requirement |
@@ -197,4 +213,4 @@ Converts to MIT on January 1, 2030.
 
 ---
 
-Built with ⚡ and zero dependencies. If JediMock saves you time, consider [buying me a coffee](https://buymeacoffee.com/machopicchu).
+Built with ⚡ and zero npm dependencies. If JediMock saves you time, consider [buying me a coffee](https://buymeacoffee.com/machopicchu).

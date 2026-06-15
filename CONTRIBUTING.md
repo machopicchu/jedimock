@@ -48,7 +48,7 @@ No build step, no package install. Open `app.html` directly in your browser.
 
 ### 2. Make your changes
 
-The codebase is a single HTML file (`app.html`) with an optional split build (`app.js` + `styles.css`). Edit `app.html` — the split files are generated from it.
+The main app is split across `app.html`, `app.js`, and `styles.css`. Keep changes in sync with the existing structure instead of assuming a generated single-file build.
 
 Keep changes focused. One bug fix or one feature per pull request.
 
@@ -60,6 +60,9 @@ Open `app.html` in Chrome or Edge. Test the specific flow you changed, and also:
 - Session persists across page reload
 - Both Intercept and Async ID modes generate valid scripts
 - No console errors
+- If your change affects generated scripts, verify the flow in `test-lab.html`
+- Run `node --test tests/*.test.cjs` for the extracted core helpers
+- Run `internal/qa-smoke.html` before opening the PR if you touched script generation, share/import, or tab/session state
 
 ### 4. Open a pull request
 
@@ -73,7 +76,7 @@ Open `app.html` in Chrome or Edge. Test the specific flow you changed, and also:
 ## Code style
 
 - Vanilla JS, no frameworks, no build tools
-- Keep the single-file constraint — the app must work by opening `app.html` directly
+- Keep the no-build-step constraint — the app must work by opening `app.html` directly
 - No external dependencies beyond the fonts already in use
 - Match the existing naming conventions (`camelCase` for functions, `kebab-case` for CSS classes)
 - Comments where the intent isn't obvious, not where the code speaks for itself

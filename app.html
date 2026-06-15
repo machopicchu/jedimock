@@ -10,7 +10,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 
-<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="styles.css?v=20260615b">
 </head>
 
 <body>
@@ -96,8 +96,8 @@
     <div class="shortcuts-section">
       <div class="shortcuts-section-title">Editor</div>
       <div class="shortcut-row"><span class="shortcut-label">Search tree</span><span class="shortcut-keys"><span class="kbd">Ctrl</span><span class="kbd">F</span></span></div>
-      <div class="shortcut-row"><span class="shortcut-label">Expand all</span><span class="shortcut-keys"><span class="kbd">Ctrl</span><span class="kbd">Shift</span><span class="kbd">E</span></span></div>
-      <div class="shortcut-row"><span class="shortcut-label">Collapse all</span><span class="shortcut-keys"><span class="kbd">Ctrl</span><span class="kbd">Shift</span><span class="kbd">C</span></span></div>
+      <div class="shortcut-row"><span class="shortcut-label">Expand all</span><span class="shortcut-keys"><span class="kbd">Toolbar</span></span></div>
+      <div class="shortcut-row"><span class="shortcut-label">Collapse all</span><span class="shortcut-keys"><span class="kbd">Toolbar</span></span></div>
     </div>
     <div class="shortcuts-section">
       <div class="shortcuts-section-title">General</div>
@@ -227,6 +227,10 @@
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
         Clear session
       </button>
+      <a href="./test-lab.html" class="sidebar-footer-btn" title="Open the offline self-test page" style="text-decoration:none;color:var(--text-muted)">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3H5a2 2 0 0 0-2 2v4"/><path d="M15 3h4a2 2 0 0 1 2 2v4"/><path d="M21 15v4a2 2 0 0 1-2 2h-4"/><path d="M3 15v4a2 2 0 0 0 2 2h4"/><path d="M8 12h8"/><path d="M12 8v8"/></svg>
+        Test lab
+      </a>
       <a href="./index.html" class="sidebar-footer-btn" title="Back to jedimock.com" style="text-decoration:none;border-top:1px solid var(--border);margin-top:4px;padding-top:10px;color:var(--text-dim)">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
         jedimock.com
@@ -255,6 +259,16 @@
       </div>
 
     </div>
+  </div>
+
+  <div class="mobile-quick-actions">
+    <button class="btn-ghost" type="button" onclick="toggleSidebarOverlay()">☰ Menu</button>
+    <button class="btn-ghost" type="button" onclick="shareTab()">Share</button>
+    <button class="btn-ghost" type="button" onclick="exportConfig()">Export</button>
+    <label class="btn-ghost mobile-import-btn">
+      Import
+      <input type="file" accept=".json" onchange="importConfig(event)" style="display:none">
+    </label>
   </div>
 
   <!-- MODE -->
@@ -338,7 +352,7 @@
     </div>
     <div id="reqBodySection" class="section-body">
       <div id="requestMergeHint" style="font-size:11px;color:var(--text-dim);margin-bottom:8px">
-        Fields you edit here will be merged into the real request body before it reaches the server.
+        Fields you edit here will be merged into the real request body before it reaches the server. If the outgoing body is not valid JSON, JediMock leaves it unchanged and logs a warning.
       </div>
       <div id="requestReplaceHint" style="font-size:11px;color:var(--accent);margin-bottom:8px;display:none">
         ✓ Replace mode — the real body is ignored. Exactly this JSON is sent to the server.
@@ -460,7 +474,7 @@
     </div>
     <div id="jsonSection" class="section-body">
       <div id="responseMergeHint" style="font-size:11px;color:var(--text-dim);margin-bottom:8px;display:none">
-        Your changes will be applied on top of the real response. Fields you edit in the tree below override the real values.
+        Your changes will be applied on top of the real response. Fields you edit in the tree below override the real values. Merge mode expects a JSON response body.
       </div>
       <div id="responseReplaceHint" style="font-size:11px;color:var(--accent);margin-bottom:8px;display:none">
         ✓ Replace mode — the real response is ignored. Exactly this JSON is returned to your app.
@@ -1104,6 +1118,10 @@
 
 
 
+<script src="lib/app-core.js"></script>
+<script src="lib/diff-core.js"></script>
+<script src="lib/script-generation.js"></script>
+<script src="lib/session-store.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
