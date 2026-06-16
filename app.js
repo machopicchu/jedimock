@@ -1437,6 +1437,7 @@ ${mods}
 
 script=`(function(){
   let _capturedId = null;
+  const _jmAsyncFallbackMs = ${fallbackEnabledAsync ? fallbackTimeoutAsync * 1000 : 0};
   const _placeholderId = ${placeholderJson};
   const _mockData = ${mockJson};
 

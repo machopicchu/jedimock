@@ -321,6 +321,33 @@
       };
     }
 
+
+    async function testAsyncFallbackGeneration(w){
+      setFrameTab(w, {
+        name: "Async Fallback QA",
+        asyncProtocol: "fetch",
+        rawJson: "{\"job\":{\"id\":\"job-123\"},\"state\":\"pending\"}",
+        data: { job: { id: "job-123" }, state: "pending" },
+        asyncTriggerMethod: "POST",
+        asyncTriggerUrl: "/api/jobs/start",
+        asyncResponseMethod: "GET",
+        asyncResponseUrl: "/api/jobs/*/status",
+        asyncIdField: "job.id",
+        asyncIdPath: ["job", "id"],
+        fallbackEnabledAsync: true,
+        fallbackTimeoutAsync: 7
+      });
+      w.generate();
+      const output = w.document.getElementById("output").textContent;
+      const ok = output.includes("const _jmAsyncFallbackMs = 7000;") &&
+        output.includes("}, _jmAsyncFallbackMs);") &&
+        output.includes("jm-async-fallback");
+      return {
+        ok,
+        details: ok ? "Async fallback scripts define the timer before using it." : output.slice(0, 800)
+      };
+    }
+
     async function testInvalidShareHandling(w){
       w.history.replaceState(null, "", "#share=%%%not-valid%%%");
       await w.loadSharedTab();
@@ -347,6 +374,7 @@
           ["Shared-tab round trip", testShareRoundTrip],
           ["Inline tab rename", testRenameFlow],
           ["Response rules generation", testRulesGeneration],
+          ["Async fallback generation", testAsyncFallbackGeneration],
           ["Invalid share handling", testInvalidShareHandling]
         ];
 
