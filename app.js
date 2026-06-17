@@ -1243,9 +1243,14 @@ ${fallbackEnabled ? fallbackMods : ''}
 
   // ── FETCH INTERCEPT ──
   window.fetch = async (url, options={}) => {
-    // Normalize url — handle fetch(Request) and fetch(URL) patterns
-    if (url instanceof Request) { if(!options || Object.keys(options).length===0) options={}; url = url.url; }
-    else if (typeof url !== 'string') url = String(url);
+    // Normalize url for matching, while preserving the original fetch input when forwarding.
+    const _jmFetchInput = url;
+    if (typeof Request !== 'undefined' && url instanceof Request) {
+      if(options == null || Object.keys(options).length===0) options={};
+      url = url.url;
+    } else if (typeof URL !== 'undefined' && url instanceof URL) {
+      url = url.toString();
+    } else if (typeof url !== 'string') url = String(url);
     if (${_urlMatch}) {
       _jmHandled = true;
       setTimeout(()=>_jmHandled=false,0);
@@ -1253,7 +1258,7 @@ ${fallbackEnabled ? fallbackMods : ''}
         ${reqBodyMods ? `// Modify request body
         if(options.body) options = {...options, body: _applyReqMods(options.body)};` : ''}
         ${interceptTarget==='request' ? `// Request-only mode — send modified request, return real response
-        const res = await _fetch(url, options);
+        const res = await _fetch(_jmFetchInput, options);
         console.log('%c⚡ JediMock request modified', 'color:#00D4FF;font-weight:bold;font-size:12px', { tab: _jmTab, url, time: new Date().toLocaleTimeString() });
         return res;` : getResponseMode()==='replace' ? `// Replace mode — return full JSON directly, skip real response
         const _mockStatus=${t.statusCode||200}; const _mockDelay=${t.responseDelay||0};
@@ -1261,7 +1266,7 @@ ${fallbackEnabled ? fallbackMods : ''}
 ${mods}
         if(_mockDelay>0) await new Promise(r=>setTimeout(r,_mockDelay));
         console.log('%c⚡ JediMock replaced', 'color:#00D4FF;font-weight:bold;font-size:12px', { tab: _jmTab, url, status: _mockStatus, mode: 'Replace', time: new Date().toLocaleTimeString() });
-        return new Response(JSON.stringify(data), { status: _mockStatus, headers: { "Content-Type": "application/json" } });` : `const res = await _fetch(url, options);
+        return new Response(JSON.stringify(data), { status: _mockStatus, headers: { "Content-Type": "application/json" } });` : `const res = await _fetch(_jmFetchInput, options);
         try {
           let data = await res.clone().json();
 ${mods}
@@ -1298,7 +1303,7 @@ ${mods}
       }
       return _jmRunFetchIntercept();
     }
-    return _fetch(url, options);
+    return _fetch(_jmFetchInput, options);
   };
 
   // ── XHR INTERCEPT ──
@@ -1482,10 +1487,18 @@ hasPathStar ? `    const m = url.match(new RegExp(${pathPatternLiteral}));
 
   // FETCH async
   window.fetch = async (url, options={}) => {
-    const method = (options.method||"GET").toUpperCase();
+    const _jmFetchInput = url;
+    const _jmIsRequest = typeof Request !== "undefined" && url instanceof Request;
+    if (_jmIsRequest) {
+      if(options == null || Object.keys(options).length===0) options={};
+      url = url.url;
+    } else if (typeof URL !== "undefined" && url instanceof URL) {
+      url = url.toString();
+    } else if (typeof url !== "string") url = String(url);
+    const method = (options.method || (_jmIsRequest ? _jmFetchInput.method : "GET") || "GET").toUpperCase();
     // Trigger: capture ID
-    if (typeof url === "string" && url.includes(${triggerUrlLiteral}) && method === ${triggerMethodLiteral}) {
-      const res = await _fetch(url, options);
+    if (url.includes(${triggerUrlLiteral}) && method === ${triggerMethodLiteral}) {
+      const res = await _fetch(_jmFetchInput, options);
       try {
         const body = await res.clone().json();
         _capturedId = body${idPath};
@@ -1495,7 +1508,7 @@ hasPathStar ? `    const m = url.match(new RegExp(${pathPatternLiteral}));
       return res;
     }
     // Response: inject ID
-    if (typeof url === "string" && _matchesResponseUrl(url) && method === ${responseMethodLiteral}) {
+    if (_matchesResponseUrl(url) && method === ${responseMethodLiteral}) {
       const id = _capturedId ?? _extractIdFromUrl(url);
       const data = JSON.parse(JSON.stringify(_mockData));
 ${mods}
@@ -1503,7 +1516,7 @@ ${mods}
       console.log('%c⚡ JediMock [Async] Responding', 'color:#00D4FF;font-weight:bold', { url, id });
       return new Response(JSON.stringify(data), { status: ${t.statusCode||200}, headers: { "Content-Type": "application/json" } });
     }
-    return _fetch(url, options);
+    return _fetch(_jmFetchInput, options);
   };
 
   // XHR async
@@ -1531,11 +1544,17 @@ ${mods}
       const data = JSON.parse(JSON.stringify(_mockData));
 ${mods}
       if (id !== null) replaceIdInObject(data, _placeholderId, id);
-      Object.defineProperty(this, "responseText", { value: JSON.stringify(data), writable:true, configurable:true });
-      Object.defineProperty(this, "response",     { value: JSON.stringify(data), writable:true, configurable:true });
-      Object.defineProperty(this, "status",       { value: ${t.statusCode||200},  writable:true, configurable:true });
+      const _jmAsyncXhr = this;
+      const _mockBody = JSON.stringify(data);
       console.log('%c⚡ JediMock [Async/XHR] Responding', 'color:#00D4FF;font-weight:bold', { url, id });
-      setTimeout(() => this.dispatchEvent(new Event("load")), ${t.responseDelay||0});
+      setTimeout(() => {
+        Object.defineProperty(_jmAsyncXhr, "responseText", { value: _mockBody, writable:true, configurable:true });
+        Object.defineProperty(_jmAsyncXhr, "response",     { value: _mockBody, writable:true, configurable:true });
+        Object.defineProperty(_jmAsyncXhr, "status",       { value: ${t.statusCode||200},  writable:true, configurable:true });
+        Object.defineProperty(_jmAsyncXhr, "readyState",   { value: 4, writable:true, configurable:true });
+        _jmAsyncXhr.dispatchEvent(new Event("readystatechange"));
+        _jmAsyncXhr.dispatchEvent(new Event("load"));
+      }, ${t.responseDelay||0});
       return;
     }
     return _xhrSend.apply(this, arguments);
@@ -1555,6 +1574,13 @@ ${mods}
       detail: { url: constructedUrl, data, id: _capturedId }
     }));
   }, _jmAsyncFallbackMs);` : ``}
+
+  window.addEventListener('beforeunload', function _jmCleanup() {
+    window.fetch = _fetch;
+    XMLHttpRequest.prototype.open = _xhrOpen;
+    XMLHttpRequest.prototype.send = _xhrSend;
+    window.removeEventListener('beforeunload', _jmCleanup);
+  });
 })();`;
   }
 
