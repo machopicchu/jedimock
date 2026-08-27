@@ -1,5 +1,39 @@
 # Changelog
 
+## 1.3.10 — 2026-08-27
+
+- Prepared a new cache-safe website release after the full local and hosted browser regression suites passed.
+- Preserved the current application behavior while updating every website release marker and immutable asset URL.
+- Packaged the website separately for GitHub Pages and Cloudflare Pages deployment.
+
+## Browser extension 1.0.0 — public release — 2026-08-27
+
+- Added focused quick mocking plus the complete Advanced setup workflow for fetch, XHR, Async ID, and Firebase v8 Firestore.
+- Added response merging, request-body modification, headers, fallback behavior, per-call response rules, cURL import, local sharing, and import/export.
+- Added a local saved-mocks library with one-click activation, editing, renaming, duplication, and deletion.
+- Added explicit `{{id}}` substitution, searchable trigger-response paths, and legacy saved-mock compatibility.
+- Added stable 390-pixel popup sizing, invalid-target protection, local-only storage, narrow permissions, and Chrome Web Store materials.
+- Replaced the quiet footer support link with a full-width amber Support JediMock button, a proper vector coffee icon, clear free-use wording, and an occasional dismissible post-activation reminder.
+- Passed the complete runtime, browser, privacy, accessibility, packaging, and release-check suites.
+
+## 1.3.9 — 2026-08-27
+
+- Added an optional, user-initiated Support JediMock link to the browser extension without gating any functionality.
+- Documented the external Buy Me a Coffee destination in the extension listing and privacy materials.
+- Updated the Chrome Web Store screenshot to the current 1280×800 listing requirement.
+- Prepared and validated browser extension 1.1.3.
+
+## 1.3.8 — 2026-08-27
+
+- Replaced the system lightning emoji with the official JediMock icon on the extension privacy page.
+- Updated the extension 1.1.2 popup, Advanced setup, and Chrome Web Store artwork to use the same packaged brand icon.
+
+## 1.3.7 — 2026-08-27
+
+- Added a public privacy policy and landing-page link for the Chrome Web Store release.
+- Prepared the extension 1.1.1 store listing, privacy disclosures, submission assets, and final package checks.
+- Kept the website application behavior unchanged from 1.3.6.
+
 ## 1.3.6 — 2026-08-27
 
 - Corrected the site title and description across the landing page and application.
@@ -25,20 +59,6 @@
 
 - Fixed the Copy script confirmation so repeated clicks always return the button to its normal state.
 - Kept the Copy script button width stable while its label changes to Copied, on both desktop and compact layouts.
-
-## Browser extension 1.1.0 — 2026-08-26
-
-- Added a dedicated Advanced setup page while preserving the focused quick-mock popup.
-- Added request-body and request-header modification, response merging and headers, fallback, and per-call response rules for fetch and XHR.
-- Added Async ID response flows, optional Firebase v8 Firestore snapshot overrides, cURL import, configuration import/export, and local share links.
-- Expanded extension runtime, privacy, packaging, and regression checks without adding permanent website access or a backend.
-
-## Browser extension 1.0.0 — 2026-08-26
-
-- Added a focused Chrome/Edge extension for activating and stopping fetch/XHR mocks without DevTools.
-- Added Any/GET/POST/PUT/PATCH/DELETE/HEAD/OPTIONS method matching and Contains/Exact/Pattern URL modes.
-- Added configurable JSON, status, and delay fields with local-only settings storage.
-- Added narrow `activeTab` permissions, privacy documentation, automated runtime tests, and an installable ZIP package.
 
 ## 1.3.1 — 2026-08-26
 

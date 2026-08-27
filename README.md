@@ -4,7 +4,7 @@ A browser-based developer & QA toolkit for mocking APIs, editing JSON, validatin
 
 The repository also includes a Chrome/Edge extension in `extension/` with a quick full-response popup and an Advanced setup page for request editing, response merging, rules, fallback, Async ID, Firestore, headers, cURL, sharing, and import/export.
 
-**Version 1.3.6 · No runtime dependencies · No backend · No install · [jedimock.com](https://jedimock.com)**
+**Version 1.3.10 · No runtime dependencies · No backend · No install · [jedimock.com](https://jedimock.com)**
 
 ---
 
