@@ -1,3 +1,5 @@
+const QA_MODE = new URLSearchParams(window.location.search).has('qa');
+
 let tabs=[{
   name:"Tab 1",
   data:{},
@@ -5,9 +7,13 @@ let tabs=[{
   deletions:[],
   additions:[],
   url:"",
+  matchMethod:"ANY",
+  urlMatchMode:"contains",
   mode:"fetch",
   asyncProtocol:"off",
+  responseMode:"replace",
   rawJson:"",
+  loadedRawJson:"",
   script:"",
   asyncTriggerMethod:"POST",
   asyncTriggerUrl:"",
@@ -34,6 +40,7 @@ const {
   base64UrlToBytes,
   isArrayIndexSegment,
   isSafeJsIdentifier,
+  jsonValueExpression,
   formatPath,
   formatReadablePath,
   buildTrackedModsScript,
@@ -48,6 +55,10 @@ const {
 } = globalThis.JediMockDiffCore;
 const {
   wildcardToRegex,
+  normalizeHttpMethod,
+  normalizeUrlMatchMode,
+  requestMatches,
+  generateRequestMatcherScript,
   generateRulesScript
 } = globalThis.JediMockScriptGen;
 const {
@@ -77,6 +88,8 @@ const TEMPLATES={
   "403":{ json:'{"error":"Forbidden","message":"You do not have permission to access this resource"}', statusCode:"403", delay:0 },
   "404":{ json:'{"error":"Not Found","message":"The requested resource could not be found"}', statusCode:"404", delay:0 },
   "500":{ json:'{"error":"Internal Server Error","message":"An unexpected error occurred. Please try again later"}', statusCode:"500", delay:0 },
+  slow30:{ json:"{}", statusCode:"200", delay:30000 },
+  // Backward-compatible alias for older saved actions/bookmarks.
   timeout:{ json:"{}", statusCode:"200", delay:30000 },
   slow:{ json:"{}", statusCode:"200", delay:3000 },
 };
@@ -95,6 +108,83 @@ function applyTemplate(name){
   if(_os)  _os.classList.add("hidden");
 }
 
+/* REQUEST MATCHING — simple defaults with optional advanced controls */
+function getMatchMethod(){
+  return normalizeHttpMethod(document.getElementById("matchMethod")?.value || "ANY");
+}
+
+function getUrlMatchMode(){
+  return normalizeUrlMatchMode(document.getElementById("urlMatchMode")?.value || "contains");
+}
+
+function toggleMatchSettings(forceOpen){
+  const panel = document.getElementById("matchSettings");
+  const button = document.getElementById("matchSettingsBtn");
+  if(!panel || !button) return;
+  const open = typeof forceOpen === "boolean" ? forceOpen : panel.classList.contains("hidden");
+  panel.classList.toggle("hidden", !open);
+  button.textContent = open ? "Done" : "Change";
+  button.setAttribute("aria-expanded", String(open));
+  if(open) updateMatchPreview();
+}
+
+function updateMatchSummary(){
+  const summary = document.getElementById("matchSummary");
+  const help = document.getElementById("matchModeHelp");
+  const method = getMatchMethod();
+  const mode = getUrlMatchMode();
+  const methodLabel = method === "ANY" ? "Any method" : method;
+  const modeLabels = { contains: "URL contains", exact: "Exact path", pattern: "URL pattern" };
+  const helpText = {
+    contains: "Contains matches the value anywhere in the request URL.",
+    exact: "Exact path ignores query parameters unless the configured URL includes them.",
+    pattern: "Pattern uses * for one path or query-value segment."
+  };
+  if(summary) summary.textContent = `${methodLabel} · ${modeLabels[mode]}`;
+  if(help) help.textContent = helpText[mode];
+}
+
+function updateMatchPreview(){
+  updateMatchSummary();
+  const result = document.getElementById("matchPreviewResult");
+  const exampleUrl = document.getElementById("matchPreviewUrl")?.value?.trim() || "";
+  const pattern = document.getElementById("urlInput")?.value?.trim() || "";
+  const exampleMethod = document.getElementById("matchPreviewMethod")?.value || "GET";
+  if(!result) return;
+  if(!pattern){
+    result.textContent = "Enter the API URL above first.";
+    result.className = "match-preview-result neutral";
+    return;
+  }
+  if(!exampleUrl){
+    result.textContent = "Enter an example URL to test the match.";
+    result.className = "match-preview-result neutral";
+    return;
+  }
+  const matched = requestMatches(exampleUrl, exampleMethod, pattern, getUrlMatchMode(), getMatchMethod(), location.href);
+  result.textContent = matched ? `✓ ${exampleMethod} request will be intercepted` : `✕ ${exampleMethod} request will pass through`;
+  result.className = `match-preview-result ${matched ? "pass" : "fail"}`;
+}
+
+function onMatchSettingsChange(){
+  updateMatchSummary();
+  updateMatchPreview();
+  markScriptOutdated();
+  persistSession();
+}
+
+function onUrlMatchInput(){
+  const urlMode = document.getElementById("urlMatchMode");
+  if(urlMode && urlMode.value === "contains" && document.getElementById("urlInput")?.value.includes("*")){
+    urlMode.value = "pattern";
+  }
+  updateTabName();
+  updateMatchSummary();
+  updateMatchPreview();
+  persistSession();
+  markScriptOutdated();
+}
+
 /* CLIPBOARD PASTE */
 async function pasteFromClipboard(){
   try{
@@ -110,6 +200,18 @@ async function pasteFromClipboard(){
 }
 
 /* TABS */
+function getNextDefaultTabName(excludeIndex=-1){
+  let highest=0;
+  tabs.forEach((tab,i)=>{
+    if(i===excludeIndex) return;
+    const match=/^Tab (\d+)$/.exec(tab?.name||"");
+    if(!match) return;
+    const value=Number(match[1]);
+    if(Number.isSafeInteger(value) && value>highest) highest=value;
+  });
+  return "Tab "+(highest+1);
+}
+
 function renderTabs(){
   const el=document.getElementById("tabs");
   el.replaceChildren();
@@ -274,7 +376,7 @@ function addTab(){
   if(tabs.length>=TAB_LIMIT) return;
   renamingTabIndex=-1;
   saveState(); // persist current tab before switching away
-  tabs.push({name:"Tab "+(tabs.length+1),data:{},changes:[],deletions:[],additions:[],url:"",mode:"fetch",asyncProtocol:"off",rawJson:"",script:"",asyncTriggerMethod:"POST",asyncTriggerUrl:"",asyncResponseMethod:"GET",asyncResponseUrl:"",asyncIdField:"",asyncIdPath:[],asyncCaptureField:""});
+  tabs.push({name:getNextDefaultTabName(),data:{},changes:[],deletions:[],additions:[],url:"",matchMethod:"ANY",urlMatchMode:"contains",mode:"fetch",asyncProtocol:"off",responseMode:"replace",rawJson:"",loadedRawJson:"",script:"",asyncTriggerMethod:"POST",asyncTriggerUrl:"",asyncResponseMethod:"GET",asyncResponseUrl:"",asyncIdField:"",asyncIdPath:[],asyncCaptureField:"",firestoreField:"",firestoreValue:""});
   persistSession();
   currentTab=tabs.length-1;
   loadState();
@@ -310,6 +412,8 @@ function saveState(){
   if(!t) return;
   const g=id=>document.getElementById(id);
   t.url=urlInput?urlInput.value:"";
+  t.matchMethod=getMatchMethod();
+  t.urlMatchMode=getUrlMatchMode();
   const modeEl=document.querySelector("input[name=mode]:checked");
   t.mode="fetch"; // unified — always fetch+xhr
   const asyncEl=document.querySelector("input[name=asyncMode]:checked");
@@ -329,6 +433,8 @@ function saveState(){
   t.asyncResponseUrl=g("asyncResponseUrl")?g("asyncResponseUrl").value:"";
   t.asyncIdField=asyncIdField;
   t.asyncIdPath=[...asyncIdPath];
+  t.firestoreField=g("firestoreField")?g("firestoreField").value:"";
+  t.firestoreValue=g("firestoreValue")?g("firestoreValue").value:"";
   t.statusCode=g("statusCode")?g("statusCode").value||"200":"200";
   t.responseDelay=g("responseDelay")?parseInt(g("responseDelay").value)||0:0;
   saveRulesToTab();
@@ -358,10 +464,15 @@ function saveState(){
 
 function loadState(){
   _loadingState = true;
+  const t=tabs[currentTab];
   try{
-    const t=tabs[currentTab];
-
     urlInput.value=t.url||"";
+    const matchMethodEl=document.getElementById("matchMethod");
+    const urlMatchModeEl=document.getElementById("urlMatchMode");
+    if(matchMethodEl) matchMethodEl.value=normalizeHttpMethod(t.matchMethod||"ANY");
+    if(urlMatchModeEl) urlMatchModeEl.value=normalizeUrlMatchMode(t.urlMatchMode||"contains");
+    updateMatchSummary();
+    updateMatchPreview();
     jsonInput.value=t.rawJson||"";
 
     document.querySelectorAll("input[name=mode]")
@@ -369,7 +480,7 @@ function loadState(){
     document.querySelectorAll("input[name=asyncMode]")
       .forEach(r=>r.checked=r.value===(t.asyncProtocol||"off"));
 
-    data=t.data||{};
+    data=t.data === undefined ? {} : t.data;
     changes=t.changes||[];
     deletions=t.deletions||[];
     additions=t.additions||[];
@@ -382,6 +493,8 @@ function loadState(){
     document.getElementById("asyncTriggerUrl").value=t.asyncTriggerUrl||"";
     document.getElementById("asyncResponseMethod").value=t.asyncResponseMethod||"GET";
     document.getElementById("asyncResponseUrl").value=t.asyncResponseUrl||"";
+    document.getElementById("firestoreField").value=t.firestoreField||"";
+    document.getElementById("firestoreValue").value=t.firestoreValue||"";
 
     const scEl=document.getElementById("statusCode");
     if(scEl) scEl.value=t.statusCode||"200";
@@ -396,9 +509,15 @@ function loadState(){
     onModeChange();
     render();
     updateVisibility();
-  }catch(e){
+  }finally{
     _loadingState = false;
-    throw e;
+  }
+  if(t && t.scriptUpToDate === true && t.script){
+    markScriptCurrent();
+  } else if(t && t.script){
+    markScriptOutdated();
+  } else {
+    markScriptCurrent();
   }
 }
 
@@ -421,22 +540,53 @@ function onModeChange(){
   // interceptPill always enabled — user can switch freely
 
   // Update tab name based on mode
+  updateAdvancedSetupSummary();
   updateTabName();
 }
 
+function updateAdvancedSetupSummary(){
+  const summary = document.getElementById('advancedSetupSummary');
+  if(!summary) return;
+  const isAsync = document.querySelector('input[name="asyncMode"]:checked')?.value !== 'off';
+  if(isAsync){
+    summary.textContent = 'Async ID';
+    return;
+  }
+  const target = getInterceptTarget();
+  const responseLabel = getResponseMode() === 'replace' ? 'Return JSON' : 'Modify real response';
+  const targetLabels = {
+    response: responseLabel,
+    request: 'Modify request',
+    both: 'Request + ' + responseLabel
+  };
+  summary.textContent = 'Intercept · ' + (targetLabels[target] || responseLabel);
+}
+
 function updateTabName(){
+  if(_loadingState) return;
   const asyncProtocol=document.querySelector("input[name=asyncMode]:checked").value;
   const isAsync=asyncProtocol!=="off";
   const nameVal = isAsync
     ? (document.getElementById("asyncResponseUrl").value||document.getElementById("asyncTriggerUrl").value)
     : urlInput.value;
-  tabs[currentTab].name=nameVal||("Tab "+(currentTab+1));
+  if(nameVal){
+    tabs[currentTab].name=nameVal;
+  } else if(!/^Tab \d+$/.test(tabs[currentTab].name)){
+    tabs[currentTab].name=getNextDefaultTabName(currentTab);
+  }
   renderTabs();
 }
 
 /* VISIBILITY */
+function isResponseJsonLoaded(){
+  const t=tabs[currentTab];
+  const raw=jsonInput ? jsonInput.value : (t?.rawJson||"");
+  const loaded=t?.loadedRawJson === undefined ? (t?.rawJson||"") : t.loadedRawJson;
+  return !!raw.trim() && raw===loaded;
+}
+
 function updateVisibility(){
-  const hasData = Object.keys(data).length > 0;
+  const hasData = isResponseJsonLoaded();
   const target = typeof getInterceptTarget === 'function' ? getInterceptTarget() : 'response';
   const isRequestOnly = target === 'request';
   const includesRequest = target === 'request' || target === 'both';
@@ -467,6 +617,8 @@ function updateVisibility(){
 
   // Output section
   if(os) os.classList.toggle("hidden", !op || !op.textContent);
+
+  updateFallbackRowVisibility();
 }
 
 /* COLLAPSE */
@@ -504,6 +656,11 @@ function loadJson(){
   }
 
   data=parsed;
+  if(tabs[currentTab]){
+    tabs[currentTab].data=data;
+    tabs[currentTab].rawJson=jsonInput.value;
+    tabs[currentTab].loadedRawJson=jsonInput.value;
+  }
   changes=[];
   deletions=[];
   additions=[];
@@ -972,7 +1129,7 @@ function walk(obj,path,parent){
 }
 
 function updateChangesBadge(){
-  if(changes.length > 0 || deletions.length > 0 || additions.length > 0) markScriptOutdated();
+  markScriptOutdated();
   // Update req badge if in req context
   const badge=document.getElementById("changesBadge");
   if(!badge) return;
@@ -1038,6 +1195,9 @@ function updateDiffPanel(){
 /* Fetch + XHR: patches changes, applies deletions, injects additions */
 function markScriptOutdated(){
   if(_loadingState) return; // don't mark outdated during state load
+  _scriptUpToDate = false;
+  if(tabs && tabs[currentTab]) tabs[currentTab].scriptUpToDate = false;
+  persistSession();
   // Only show outdated if a script has been generated
   const op = document.getElementById('output');
   if(!op || !op.textContent) return;
@@ -1045,9 +1205,6 @@ function markScriptOutdated(){
   const os = document.getElementById('outputSection');
   if(btn){
     btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg> Regenerate';
-    btn.style.background = 'var(--yellow, #f59e0b)';
-    btn.style.border = 'none';
-    btn.style.color = '#000';
   }
   if(os){
     let badge = document.getElementById('scriptOutdatedBadge');
@@ -1063,8 +1220,6 @@ function markScriptOutdated(){
   // Dim copy button
   const copyBtn = document.getElementById('copyScriptBtn');
   if(copyBtn){ copyBtn.style.opacity = '0.4'; copyBtn.title = 'Script is outdated — regenerate first'; }
-  _scriptUpToDate = false;
-  if(tabs && tabs[currentTab]) tabs[currentTab].scriptUpToDate = false;
 }
 
 function markScriptCurrent(){
@@ -1072,7 +1227,7 @@ function markScriptCurrent(){
   if(tabs && tabs[currentTab]) tabs[currentTab].scriptUpToDate = true;
   const btn = document.getElementById('generateBtn');
   if(btn){
-    btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg> Generate Script';
+    btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg> Generate script';
     btn.style.background = '';
     btn.style.color = '';
     btn.style.border = '';
@@ -1085,7 +1240,7 @@ function markScriptCurrent(){
 
 function generateWithFeedback(){
   const btn = document.getElementById('generateBtn');
-  const defaultLabel = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg> Generate Script';
+  const defaultLabel = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg> Generate script';
   if(btn){
     btn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="animation:spin 0.6s linear infinite"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> Generating...';
     btn.disabled = true;
@@ -1130,7 +1285,7 @@ function generate(){
     !!(document.getElementById('requestBodyInput')?.value?.trim())
   );
 
-  if(!isRequestOnly && (!t.rawJson.trim()||Object.keys(t.data).length===0)){
+  if(!isRequestOnly && !isResponseJsonLoaded()){
     const ji=document.getElementById("jsonInput");
     if(ji){
       ji.focus();
@@ -1181,7 +1336,7 @@ function generate(){
     }
   }
   let script="";
-  const fallbackEnabled = getFallbackEnabled();
+  const fallbackEnabled = getFallbackEnabled() && !isAsync && target !== 'request' && getResponseMode() !== 'replace';
   const fallbackTimeout = getFallbackTimeout();
   const fallbackEnabledAsync = getFallbackEnabledAsync();
   const fallbackTimeoutAsync = getFallbackTimeoutAsync();
@@ -1192,17 +1347,20 @@ function generate(){
 
   // ── UNIFIED INTERCEPT SCRIPT (patches both fetch AND XHR) ──
   if(!isAsync){
-const _rulesScript = (rulesEnabled && rules.length > 0) ? generateRulesScript(rules) : '';
-const _urlMatch = t.url.includes('*') ? `new RegExp(${JSON.stringify(wildcardToRegex(t.url))}).test(url)` : `url.includes(${JSON.stringify(t.url)})`;
+const _rulesScript = (rulesEnabled && rules.length > 0) ? generateRulesScript(rules, t.statusCode, t.responseDelay) : '';
+const _matcherScript = generateRequestMatcherScript(t.url, t.urlMatchMode, t.matchMethod);
 const interceptTarget = getInterceptTarget();
 const reqBodyMods = (interceptTarget==='request'||interceptTarget==='both') ? getRequestBodyMods() : null;
+const reqTrackedMods = buildTrackedModsScript('b', t.reqChanges||[], t.reqDeletions||[], t.reqAdditions||[], '      ');
 const _reqBodyScript = reqBodyMods ? `
-  const _reqMods = ${JSON.stringify(reqBodyMods)};
+  const _reqMods = ${jsonValueExpression(reqBodyMods)};
   const _reqMode = "${getRequestBodyMode()}";
   function _applyReqMods(bodyStr){
     try{
       if(_reqMode==='replace') return JSON.stringify(_reqMods);
-      const b=JSON.parse(bodyStr||'{}'); Object.assign(b,_reqMods); return JSON.stringify(b);
+      const b=JSON.parse(bodyStr||'{}');
+${reqTrackedMods}
+      return JSON.stringify(b);
     }catch(e){
       console.warn('%c⚠ JediMock warning', 'color:#fbbf24;font-weight:bold;font-size:12px', {
         message: 'Request body merge skipped because the outgoing body was not valid JSON',
@@ -1212,30 +1370,48 @@ const _reqBodyScript = reqBodyMods ? `
     }
   }` : '';
 script=`(function(){
+  if(typeof window.__JediMockCleanup === 'function') window.__JediMockCleanup({ silent: true });
   const _fetch = window.fetch;
   const _xhrOpen = XMLHttpRequest.prototype.open;
   const _xhrSend = XMLHttpRequest.prototype.send;
-  const _jmPattern = ${JSON.stringify(t.url)};
+  const _xhrAbort = XMLHttpRequest.prototype.abort;
+${_matcherScript}
   const _jmTab = ${JSON.stringify(t.name||'Tab '+(currentTab+1))};
   const _jmFallbackMs = ${fallbackEnabled ? fallbackTimeout * 1000 : 0};
-  let _jmHandled = false;
 ${_rulesScript}
 ${_reqBodyScript}
+  function _jmJsonBody(data, status){
+    return [204, 205, 304].includes(Number(status)) ? null : JSON.stringify(data);
+  }
   function _jmIsFallbackError(e){
     return e && (e.message === 'jm_timeout' || e.message === 'Failed to fetch' || e.name === 'TypeError');
   }
   function _jmBuildFallbackResponse(url, reason){
     console.log('%c⚡ JediMock fallback', 'color:#00D4FF;font-weight:bold;font-size:12px', { url, reason, tab: _jmTab });
-    const _fbData = ${JSON.stringify(t.data)};
+    const _fbData = ${jsonValueExpression(t.data)};
 ${fallbackEnabled ? fallbackMods : ''}
-    return new Response(JSON.stringify(_fbData), {
+    return new Response(_jmJsonBody(_fbData, ${t.statusCode||200}), {
       status: ${t.statusCode||200},
       headers: { 'Content-Type': 'application/json' }
     });
   }
+  function _jmApplyXhrFallback(xhr, url, reason){
+    console.log('%c⚡ JediMock fallback (XHR)', 'color:#00D4FF;font-weight:bold;font-size:12px', { url, reason, tab: _jmTab });
+    const _fbData = ${jsonValueExpression(t.data)};
+${fallbackEnabled ? fallbackMods : ''}
+    const body = _jmJsonBody(_fbData, ${t.statusCode||200}) || '';
+    xhr._jmFallbackApplied = true;
+    try { if(typeof _xhrAbort === 'function') _xhrAbort.call(xhr); } catch(e) {}
+    Object.defineProperty(xhr, "responseText", { value: body, writable:true, configurable:true });
+    Object.defineProperty(xhr, "response",     { value: xhr.responseType === 'json' ? _fbData : body, writable:true, configurable:true });
+    Object.defineProperty(xhr, "status",       { value: ${t.statusCode||200}, writable:true, configurable:true });
+    Object.defineProperty(xhr, "readyState",   { value: 4, writable:true, configurable:true });
+    xhr.dispatchEvent(new Event("readystatechange"));
+    xhr.dispatchEvent(new Event("load"));
+  }
   // ── ACTIVATION LOG ──
   (()=>{
-    const _info = { url: _jmPattern, target: '${interceptTarget}', mode: '${getResponseMode()}' };
+    const _info = { url: _jmPattern, method: _jmMatchMethod, match: _jmMatchMode, target: '${interceptTarget}', mode: '${getResponseMode()}' };
     ${rulesEnabled && rules.length > 0 ? `_info.rules = ${rules.length};` : ''}
     ${fallbackEnabled ? `_info.fallback = '${fallbackTimeout}s';` : ''}
     console.log('%c⚡ JediMock active', 'color:#00D4FF;font-weight:bold;font-size:12px', _info);
@@ -1245,28 +1421,46 @@ ${fallbackEnabled ? fallbackMods : ''}
   window.fetch = async (url, options={}) => {
     // Normalize url for matching, while preserving the original fetch input when forwarding.
     const _jmFetchInput = url;
-    if (typeof Request !== 'undefined' && url instanceof Request) {
+    const _jmIsRequest = typeof Request !== 'undefined' && url instanceof Request;
+    if (_jmIsRequest) {
       if(options == null || Object.keys(options).length===0) options={};
       url = url.url;
     } else if (typeof URL !== 'undefined' && url instanceof URL) {
       url = url.toString();
     } else if (typeof url !== 'string') url = String(url);
-    if (${_urlMatch}) {
-      _jmHandled = true;
-      setTimeout(()=>_jmHandled=false,0);
+    const _jmActualMethod = (options.method || (_jmIsRequest ? _jmFetchInput.method : 'GET') || 'GET').toUpperCase();
+    if (_jmMatchesRequest(url, _jmActualMethod)) {
+      let _jmServerResponded = false;
       const _jmRunFetchIntercept = async () => {
         ${reqBodyMods ? `// Modify request body
-        if(options.body) options = {...options, body: _applyReqMods(options.body)};` : ''}
+        let _jmForwardInput = _jmFetchInput;
+        if(Object.prototype.hasOwnProperty.call(options, 'body') && options.body !== null){
+          options = {...options, body: _applyReqMods(options.body)};
+        } else if(_reqMode === 'replace' && _jmActualMethod !== 'GET' && _jmActualMethod !== 'HEAD' && !_jmIsRequest){
+          options = {...options, body: _applyReqMods('')};
+        } else if(_jmIsRequest && _jmActualMethod !== 'GET' && _jmActualMethod !== 'HEAD'){
+          try {
+            const _jmRequestBody = await _jmFetchInput.clone().text();
+            _jmForwardInput = new Request(_jmFetchInput, { body: _applyReqMods(_jmRequestBody) });
+          } catch(e) {
+            console.warn('%c⚠ JediMock warning', 'color:#fbbf24;font-weight:bold;font-size:12px', {
+              message: 'Request body could not be read, so it was forwarded unchanged', error: e.message
+            });
+          }
+        }` : `const _jmForwardInput = _jmFetchInput;`}
         ${interceptTarget==='request' ? `// Request-only mode — send modified request, return real response
-        const res = await _fetch(_jmFetchInput, options);
+        const res = await _fetch(_jmForwardInput, options);
+        _jmServerResponded = true;
         console.log('%c⚡ JediMock request modified', 'color:#00D4FF;font-weight:bold;font-size:12px', { tab: _jmTab, url, time: new Date().toLocaleTimeString() });
         return res;` : getResponseMode()==='replace' ? `// Replace mode — return full JSON directly, skip real response
-        const _mockStatus=${t.statusCode||200}; const _mockDelay=${t.responseDelay||0};
-        let data = ${JSON.stringify(t.data)};
+        let data = ${jsonValueExpression(t.data)};
 ${mods}
+        ${(rulesEnabled && rules.length > 0) ? 'const _jmR = _jmGetResponse(data); data = _jmR.data; const _mockStatus = _jmR.status; const _mockDelay = _jmR.delay;' : `const _mockStatus=${t.statusCode||200}; const _mockDelay=${t.responseDelay||0};`}
+        _jmServerResponded = true;
         if(_mockDelay>0) await new Promise(r=>setTimeout(r,_mockDelay));
         console.log('%c⚡ JediMock replaced', 'color:#00D4FF;font-weight:bold;font-size:12px', { tab: _jmTab, url, status: _mockStatus, mode: 'Replace', time: new Date().toLocaleTimeString() });
-        return new Response(JSON.stringify(data), { status: _mockStatus, headers: { "Content-Type": "application/json" } });` : `const res = await _fetch(_jmFetchInput, options);
+        return new Response(_jmJsonBody(data, _mockStatus), { status: _mockStatus, headers: { "Content-Type": "application/json" } });` : `const res = await _fetch(_jmForwardInput, options);
+        _jmServerResponded = true;
         try {
           let data = await res.clone().json();
 ${mods}
@@ -1277,7 +1471,7 @@ ${mods}
             status: _mockStatus, target: '${interceptTarget}', delay: _mockDelay+'ms',
             time: new Date().toLocaleTimeString()
           });
-          return new Response(JSON.stringify(data), {
+          return new Response(_jmJsonBody(data, _mockStatus), {
             status: _mockStatus,
             headers: { "Content-Type": "application/json" }
           });
@@ -1291,12 +1485,14 @@ ${mods}
         }`}
       };
       if(_jmFallbackMs > 0){
+        const _jmInterceptPromise = _jmRunFetchIntercept();
         try {
           return await Promise.race([
-            _jmRunFetchIntercept(),
+            _jmInterceptPromise,
             new Promise((_, rej) => setTimeout(() => rej(new Error('jm_timeout')), _jmFallbackMs))
           ]);
         } catch(e) {
+          if(e && e.message === 'jm_timeout' && _jmServerResponded) return _jmInterceptPromise;
           if(_jmIsFallbackError(e)) return _jmBuildFallbackResponse(url, e.message);
           throw e;
         }
@@ -1309,29 +1505,64 @@ ${mods}
   // ── XHR INTERCEPT ──
   XMLHttpRequest.prototype.open = function(method, url) {
     this._jmUrl = url; this._jmMethod = method;
-    return _xhrOpen.apply(this, arguments);
+    const _jmOpenResult = _xhrOpen.apply(this, arguments);
+    ${interceptTarget!=='request' && getResponseMode()==='merge' ? `if(typeof url === "string" && _jmMatchesRequest(url, method)) {
+      const _jmXhr = this;
+      this._jmLoadDelay = 0;
+      const _jmAddEventListener = this.addEventListener.bind(this);
+      const _jmRemoveEventListener = this.removeEventListener.bind(this);
+      const _jmLoadWrappers = new WeakMap();
+      const _jmInvokeLoad = function(listener, event) {
+        const run = function() {
+          if(typeof listener === 'function') listener.call(_jmXhr, event);
+          else if(listener && typeof listener.handleEvent === 'function') listener.handleEvent(event);
+        };
+        const delay = Number(_jmXhr._jmLoadDelay) || 0;
+        if(delay > 0) setTimeout(run, delay); else run();
+      };
+      this.addEventListener = function(type, listener, options) {
+        if(type !== 'load' || !listener) return _jmAddEventListener(type, listener, options);
+        const wrapped = function(event) { _jmInvokeLoad(listener, event); };
+        _jmLoadWrappers.set(listener, wrapped);
+        return _jmAddEventListener(type, wrapped, options);
+      };
+      this.removeEventListener = function(type, listener, options) {
+        return _jmRemoveEventListener(type, type === 'load' && listener ? (_jmLoadWrappers.get(listener) || listener) : listener, options);
+      };
+      let _jmUserOnload = this.onload;
+      this.onload = null;
+      _jmAddEventListener('load', function(event) {
+        if(typeof _jmUserOnload === 'function') _jmInvokeLoad(_jmUserOnload, event);
+      });
+      Object.defineProperty(this, 'onload', {
+        configurable: true,
+        get: function() { return _jmUserOnload; },
+        set: function(fn) { _jmUserOnload = fn; }
+      });
+    }` : ``}
+    return _jmOpenResult;
   };
   XMLHttpRequest.prototype.send = function(body) {
     const url = this._jmUrl || '';
-    if(_jmHandled) return _xhrSend.apply(this, arguments);
-    if (typeof url === "string" && ${_urlMatch}) {
+    const _jmActualMethod = (this._jmMethod || 'GET').toUpperCase();
+    if (typeof url === "string" && _jmMatchesRequest(url, _jmActualMethod)) {
       ${reqBodyMods ? `// Modify request body
-      if(body) body = _applyReqMods(body);` : ''}
+      if((body !== null && body !== undefined) || (_reqMode === 'replace' && _jmActualMethod !== 'GET' && _jmActualMethod !== 'HEAD')) body = _applyReqMods(body || '');` : ''}
       ${interceptTarget==='request' ? `// Request-only — send modified, return real response
       console.log('%c⚡ JediMock request modified (XHR)', 'color:#00D4FF;font-weight:bold;font-size:12px', { tab: _jmTab, url, time: new Date().toLocaleTimeString() });
       return _xhrSend.apply(this, [body]);` : getResponseMode()==='replace' ? `// Replace mode — skip real request entirely, return mock data directly
       const _xhrMock = this;
-      const _mockStatus=${t.statusCode||200}; const _mockDelay=${t.responseDelay||0};
-      let data = ${JSON.stringify(t.data)};
+      let data = ${jsonValueExpression(t.data)};
 ${mods}
-      const _mockBody = JSON.stringify(data);
+      ${(rulesEnabled && rules.length > 0) ? 'const _jmR = _jmGetResponse(data); data = _jmR.data; const _mockStatus = _jmR.status; const _mockDelay = _jmR.delay;' : `const _mockStatus=${t.statusCode||200}; const _mockDelay=${t.responseDelay||0};`}
+      const _mockBody = _jmJsonBody(data, _mockStatus) || '';
       setTimeout(function() {
         Object.defineProperty(_xhrMock, "responseText", { value: _mockBody, writable:true, configurable:true });
-        Object.defineProperty(_xhrMock, "response",     { value: _mockBody, writable:true, configurable:true });
+        Object.defineProperty(_xhrMock, "response",     { value: _xhrMock.responseType === 'json' ? data : _mockBody, writable:true, configurable:true });
         Object.defineProperty(_xhrMock, "status",       { value: _mockStatus, writable:true, configurable:true });
         Object.defineProperty(_xhrMock, "readyState",   { value: 4, writable:true, configurable:true });
-        _xhrMock.dispatchEvent(new Event("load"));
         _xhrMock.dispatchEvent(new Event("readystatechange"));
+        _xhrMock.dispatchEvent(new Event("load"));
         console.log('%c⚡ JediMock replaced (XHR)', 'color:#00D4FF;font-weight:bold;font-size:12px', {
           tab: _jmTab, pattern: _jmPattern, url,
           status: _mockStatus, target: '${interceptTarget}', mode: 'Replace/XHR',
@@ -1339,16 +1570,18 @@ ${mods}
         });
       }, _mockDelay||0);
       return;` : `// Merge mode — let real request fire, then merge changes into response
-      // Covers both xhr.onload = fn and addEventListener('load') patterns
       const _jmXhr = this;
+      let _jmMerged = false;
       const _jmDoMerge = function() {
+        if(_jmMerged) return;
+        _jmMerged = true;
         try {
-          let data = JSON.parse(_jmXhr.responseText);
+          let data = _jmXhr.responseType === 'json' ? _jmXhr.response : JSON.parse(_jmXhr.responseText);
 ${mods}
-          ${(rulesEnabled && rules.length > 0) ? 'const _jmR = _jmGetResponse(data); data = _jmR.data; const _mockStatus = _jmR.status;' : `const _mockStatus=${t.statusCode||200};`}
-          const modified = JSON.stringify(data);
+          ${(rulesEnabled && rules.length > 0) ? 'const _jmR = _jmGetResponse(data); data = _jmR.data; const _mockStatus = _jmR.status; _jmXhr._jmLoadDelay = _jmR.delay;' : `const _mockStatus=${t.statusCode||200}; _jmXhr._jmLoadDelay=${t.responseDelay||0};`}
+          const modified = _jmJsonBody(data, _mockStatus) || '';
           Object.defineProperty(_jmXhr, "responseText", { value: modified, writable:true, configurable:true });
-          Object.defineProperty(_jmXhr, "response",     { value: modified, writable:true, configurable:true });
+          Object.defineProperty(_jmXhr, "response",     { value: _jmXhr.responseType === 'json' ? data : modified, writable:true, configurable:true });
           Object.defineProperty(_jmXhr, "status",       { value: _mockStatus, writable:true, configurable:true });
           console.log('%c⚡ JediMock intercepted', 'color:#00D4FF;font-weight:bold;font-size:12px', {
             tab: _jmTab, pattern: _jmPattern, url,
@@ -1363,33 +1596,66 @@ ${mods}
           });
         }
       };
-      // Intercept onload property assignment (covers xhr.onload = fn pattern)
-      let _jmUserOnload = null;
-      Object.defineProperty(this, 'onload', {
-        configurable: true,
-        set: function(fn) { _jmUserOnload = fn; },
-        get: function() { return _jmUserOnload; }
-      });
       // readystatechange at state 4 fires before 'load' event — merge runs first
       this.addEventListener("readystatechange", function() {
-        if (this.readyState === 4) {
-          _jmDoMerge();
-          if (typeof _jmUserOnload === 'function') {
-            try { _jmUserOnload.call(this, { type: 'load', target: this, currentTarget: this }); } catch(e) {}
-          }
+        if (this.readyState === 4 && !this._jmFallbackApplied) _jmDoMerge();
+      }, true);
+      ${fallbackEnabled ? `let _jmXhrSettled = false;
+      const _jmXhrFallbackTimer = setTimeout(function() {
+        if(_jmXhrSettled) return;
+        _jmXhrSettled = true;
+        _jmApplyXhrFallback(_jmXhr, url, 'jm_timeout');
+      }, _jmFallbackMs);
+      this.addEventListener("readystatechange", function() {
+        if(this.readyState === 4 && !_jmXhrSettled) {
+          _jmXhrSettled = true;
+          clearTimeout(_jmXhrFallbackTimer);
         }
-      });
+      }, true);` : ``}
       return _xhrSend.apply(this, [body]);`}
     }
     return _xhrSend.apply(this, arguments);
   };
-  // ── CLEANUP: restore originals on page unload ──
-  window.addEventListener('beforeunload', function _jmCleanup() {
+  // ── CLEANUP: restore originals before regeneration, stop, or page unload ──
+  let _jmStopped = false;
+  let _jmAliasState = [];
+  const _jmCleanup = function(options={}) {
+    if(_jmStopped) return false;
+    _jmStopped = true;
     window.fetch = _fetch;
     XMLHttpRequest.prototype.open = _xhrOpen;
     XMLHttpRequest.prototype.send = _xhrSend;
     window.removeEventListener('beforeunload', _jmCleanup);
+    if(window.__JediMockCleanup === _jmCleanup) delete window.__JediMockCleanup;
+    _jmAliasState.forEach(state => {
+      if(window[state.name] !== state.api) return;
+      if(state.api.stop === _jmCleanup) {
+        if(state.hadStop) state.api.stop = state.stop;
+        else delete state.api.stop;
+      }
+      if(state.api !== state.value) {
+        if(state.existed) window[state.name] = state.value;
+        else delete window[state.name];
+      }
+    });
+    if(options.silent !== true) console.log('%c■ JediMock stopped', 'color:#94a3b8;font-weight:bold;font-size:12px', { tab: _jmTab });
+    return true;
+  };
+  const _jmAliasNames = ['JediMock', 'jedimock', 'JEDIMOCK'];
+  _jmAliasState = _jmAliasNames.map(name => {
+    const existed = Object.prototype.hasOwnProperty.call(window, name);
+    const value = window[name];
+    const canAttach = value !== null && (typeof value === 'object' || typeof value === 'function');
+    const api = canAttach ? value : {};
+    return { name, existed, value, api, hadStop: Object.prototype.hasOwnProperty.call(api, 'stop'), stop: api.stop };
   });
+  _jmAliasState.forEach(state => {
+    state.api.stop = _jmCleanup;
+    if(state.api !== state.value) window[state.name] = state.api;
+  });
+  window.__JediMockCleanup = _jmCleanup;
+  window.addEventListener('beforeunload', _jmCleanup);
+  console.log('%cTo stop: JediMock.stop() or reload the page', 'color:#94a3b8;font-weight:bold;font-size:12px');
 })();`;
   }
 
@@ -1409,7 +1675,7 @@ ${mods}
     // Compute placeholder value from pasted JSON so we can replace it in the mock
     const placeholderId = idFieldPath.length ? getValueAtPath(t.data, idFieldPath) : null;
     const placeholderJson=JSON.stringify(placeholderId);
-    const mockJson=JSON.stringify(t.data,null,2);
+    const mockJson=jsonValueExpression(t.data);
 
     // Smart URL matching:
     // If * is in the query string (e.g. /api/jobs/status?id=*) → extract ID from query param
@@ -1438,13 +1704,21 @@ ${mods}
       ? responseUrl.replace(/[.*+?^${}()|[\]\\]/g,"\\$&").replace("\\*","([^/?]+)")
       : "";
     const pathPatternLiteral = JSON.stringify(pathPattern);
+    const responsePatternLiteral = JSON.stringify(wildcardToRegex(responseUrl));
     const queryParamNameLiteral = JSON.stringify(queryParamName);
 
 script=`(function(){
+  if(typeof window.__JediMockCleanup === 'function') window.__JediMockCleanup({ silent: true });
   let _capturedId = null;
   const _jmAsyncFallbackMs = ${fallbackEnabledAsync ? fallbackTimeoutAsync * 1000 : 0};
   const _placeholderId = ${placeholderJson};
   const _mockData = ${mockJson};
+  let _jmResponseSeen = false;
+  let _jmAsyncFallbackTimer = null;
+
+  function _jmJsonBody(data, status){
+    return [204, 205, 304].includes(Number(status)) ? null : JSON.stringify(data);
+  }
 
   function replaceIdInObject(obj, placeholder, realId) {
     if(placeholder === null || placeholder === undefined) return;
@@ -1458,9 +1732,27 @@ script=`(function(){
     console.warn('%c⚠ JediMock warning', 'color:#fbbf24;font-weight:bold;font-size:12px', Object.assign({ tab: ${JSON.stringify(t.name||'Tab '+(currentTab+1))}, message: msg }, extra || {}));
   }
 
+${fallbackEnabledAsync ? `  function _jmScheduleAsyncFallback() {
+    if(!_jmAsyncFallbackMs || _capturedId === null || _capturedId === undefined) return;
+    _jmResponseSeen = false;
+    if(_jmAsyncFallbackTimer !== null) clearTimeout(_jmAsyncFallbackTimer);
+    _jmAsyncFallbackTimer = setTimeout(() => {
+      _jmAsyncFallbackTimer = null;
+      if(_jmResponseSeen) return;
+      const responsePattern = ${responseUrlLiteral};
+      const constructedUrl = responsePattern.replace('*', _capturedId);
+      const data = JSON.parse(JSON.stringify(_mockData));
+${mods}
+      replaceIdInObject(data, _placeholderId, _capturedId);
+      console.log('%c⚡ JediMock [Async] fallback timer', 'color:#00D4FF;font-weight:bold;font-size:12px', { constructedUrl, id: _capturedId });
+      window.dispatchEvent(new CustomEvent('jm-async-fallback', {
+        detail: { url: constructedUrl, data, id: _capturedId }
+      }));
+    }, _jmAsyncFallbackMs);
+  }
+` : ``}
   function _matchesResponseUrl(url) {
-    if(!url.includes(${basePathEscaped})) return false;
-${hasPathStar ? `    return url.match(new RegExp(${pathPatternLiteral}));` : `    return true;`}
+${responseUrl.includes("*") ? `    return new RegExp(${responsePatternLiteral}).test(url);` : `    return url.includes(${basePathEscaped});`}
   }
 
   function _extractIdFromUrl(url) {
@@ -1476,7 +1768,7 @@ hasPathStar ? `    const m = url.match(new RegExp(${pathPatternLiteral}));
   // ── ACTIVATION LOG ──
   console.log('%c⚡ JediMock active', 'color:#00D4FF;font-weight:bold;font-size:12px', {
     url: ${JSON.stringify(triggerUrl)}, mode: 'Async ID',
-    trigger: '${t.asyncTriggerMethod||"POST"}', response: ${JSON.stringify(t.asyncResponseUrl||'')}, field: ${JSON.stringify(idFieldLabel)}
+    trigger: ${triggerMethodLiteral}, response: ${JSON.stringify(t.asyncResponseUrl||'')}, field: ${JSON.stringify(idFieldLabel)}
     ${fallbackEnabledAsync ? `, fallback: '${fallbackTimeoutAsync}s'` : ''}
   });
 
@@ -1503,18 +1795,21 @@ hasPathStar ? `    const m = url.match(new RegExp(${pathPatternLiteral}));
         const body = await res.clone().json();
         _capturedId = body${idPath};
         if(_capturedId === undefined) _jmWarn('Selected Async ID field was not found in the trigger response', { url, field: ${JSON.stringify(idFieldLabel)} });
+        ${fallbackEnabledAsync ? `if(_capturedId !== undefined && _capturedId !== null) _jmScheduleAsyncFallback();` : ``}
         console.log('%c⚡ JediMock [Async] Captured ID:', 'color:#00D4FF;font-weight:bold', _capturedId);
       } catch(e) { _jmWarn('Trigger response was not valid JSON, so no Async ID was captured', { url, error: e.message }); }
       return res;
     }
     // Response: inject ID
     if (_matchesResponseUrl(url) && method === ${responseMethodLiteral}) {
+      _jmResponseSeen = true;
+      if(_jmAsyncFallbackTimer !== null) { clearTimeout(_jmAsyncFallbackTimer); _jmAsyncFallbackTimer = null; }
       const id = _capturedId ?? _extractIdFromUrl(url);
       const data = JSON.parse(JSON.stringify(_mockData));
 ${mods}
       if (id !== null) replaceIdInObject(data, _placeholderId, id);
       console.log('%c⚡ JediMock [Async] Responding', 'color:#00D4FF;font-weight:bold', { url, id });
-      return new Response(JSON.stringify(data), { status: ${t.statusCode||200}, headers: { "Content-Type": "application/json" } });
+      return new Response(_jmJsonBody(data, ${t.statusCode||200}), { status: ${t.statusCode||200}, headers: { "Content-Type": "application/json" } });
     }
     return _fetch(_jmFetchInput, options);
   };
@@ -1534,22 +1829,25 @@ ${mods}
           const b = JSON.parse(this.responseText);
           _capturedId = b${idPath};
           if(_capturedId === undefined) _jmWarn('Selected Async ID field was not found in the trigger XHR response', { url, field: ${JSON.stringify(idFieldLabel)} });
+          ${fallbackEnabledAsync ? `if(_capturedId !== undefined && _capturedId !== null) _jmScheduleAsyncFallback();` : ``}
           console.log('%c⚡ JediMock [Async/XHR] Captured ID:', 'color:#00D4FF;font-weight:bold', _capturedId);
         } catch(e) { _jmWarn('Trigger XHR response was not valid JSON, so no Async ID was captured', { url, error: e.message }); }
       });
     }
     // Response: inject ID
     if (_matchesResponseUrl(url) && method === ${responseMethodLiteral}) {
+      _jmResponseSeen = true;
+      if(_jmAsyncFallbackTimer !== null) { clearTimeout(_jmAsyncFallbackTimer); _jmAsyncFallbackTimer = null; }
       const id = _capturedId ?? _extractIdFromUrl(url);
       const data = JSON.parse(JSON.stringify(_mockData));
 ${mods}
       if (id !== null) replaceIdInObject(data, _placeholderId, id);
       const _jmAsyncXhr = this;
-      const _mockBody = JSON.stringify(data);
+      const _mockBody = _jmJsonBody(data, ${t.statusCode||200}) || '';
       console.log('%c⚡ JediMock [Async/XHR] Responding', 'color:#00D4FF;font-weight:bold', { url, id });
       setTimeout(() => {
         Object.defineProperty(_jmAsyncXhr, "responseText", { value: _mockBody, writable:true, configurable:true });
-        Object.defineProperty(_jmAsyncXhr, "response",     { value: _mockBody, writable:true, configurable:true });
+        Object.defineProperty(_jmAsyncXhr, "response",     { value: _jmAsyncXhr.responseType === 'json' ? data : _mockBody, writable:true, configurable:true });
         Object.defineProperty(_jmAsyncXhr, "status",       { value: ${t.statusCode||200},  writable:true, configurable:true });
         Object.defineProperty(_jmAsyncXhr, "readyState",   { value: 4, writable:true, configurable:true });
         _jmAsyncXhr.dispatchEvent(new Event("readystatechange"));
@@ -1559,28 +1857,47 @@ ${mods}
     }
     return _xhrSend.apply(this, arguments);
   };
-${fallbackEnabledAsync ? `
-  // FALLBACK TIMER: if response URL never fires at all, fire mock after timeout using captured ID
-  setTimeout(() => {
-    if(_capturedId === null) return; // no trigger fired yet
-    const responsePattern = ${responseUrlLiteral};
-    const constructedUrl = responsePattern.replace('*', _capturedId);
-    const data = JSON.parse(JSON.stringify(_mockData));
-${mods}
-    replaceIdInObject(data, _placeholderId, _capturedId);
-    console.log('%c⚡ JediMock [Async] fallback timer', 'color:#00D4FF;font-weight:bold;font-size:12px', { constructedUrl, id: _capturedId });
-    // Dispatch a custom event so app code listening can react
-    window.dispatchEvent(new CustomEvent('jm-async-fallback', {
-      detail: { url: constructedUrl, data, id: _capturedId }
-    }));
-  }, _jmAsyncFallbackMs);` : ``}
 
-  window.addEventListener('beforeunload', function _jmCleanup() {
+  let _jmStopped = false;
+  let _jmAliasState = [];
+  const _jmCleanup = function(options={}) {
+    if(_jmStopped) return false;
+    _jmStopped = true;
     window.fetch = _fetch;
     XMLHttpRequest.prototype.open = _xhrOpen;
     XMLHttpRequest.prototype.send = _xhrSend;
     window.removeEventListener('beforeunload', _jmCleanup);
+    if(_jmAsyncFallbackTimer !== null) clearTimeout(_jmAsyncFallbackTimer);
+    if(window.__JediMockCleanup === _jmCleanup) delete window.__JediMockCleanup;
+    _jmAliasState.forEach(state => {
+      if(window[state.name] !== state.api) return;
+      if(state.api.stop === _jmCleanup) {
+        if(state.hadStop) state.api.stop = state.stop;
+        else delete state.api.stop;
+      }
+      if(state.api !== state.value) {
+        if(state.existed) window[state.name] = state.value;
+        else delete window[state.name];
+      }
+    });
+    if(options.silent !== true) console.log('%c■ JediMock stopped', 'color:#94a3b8;font-weight:bold;font-size:12px', { tab: ${JSON.stringify(t.name||'Tab '+(currentTab+1))} });
+    return true;
+  };
+  const _jmAliasNames = ['JediMock', 'jedimock', 'JEDIMOCK'];
+  _jmAliasState = _jmAliasNames.map(name => {
+    const existed = Object.prototype.hasOwnProperty.call(window, name);
+    const value = window[name];
+    const canAttach = value !== null && (typeof value === 'object' || typeof value === 'function');
+    const api = canAttach ? value : {};
+    return { name, existed, value, api, hadStop: Object.prototype.hasOwnProperty.call(api, 'stop'), stop: api.stop };
   });
+  _jmAliasState.forEach(state => {
+    state.api.stop = _jmCleanup;
+    if(state.api !== state.value) window[state.name] = state.api;
+  });
+  window.__JediMockCleanup = _jmCleanup;
+  window.addEventListener('beforeunload', _jmCleanup);
+  console.log('%cTo stop: JediMock.stop() or reload the page', 'color:#94a3b8;font-weight:bold;font-size:12px');
 })();`;
   }
 
@@ -1596,8 +1913,13 @@ ${mods}
       script+=`
 
 (function(){
-  const _targetField="${fsField}";
+  const _targetField=${JSON.stringify(fsField)};
   const _targetValue=${fsValueExpr};
+  const _jmPreviousCleanup=window.__JediMockCleanup;
+  const _jmAliasNames=['JediMock','jedimock','JEDIMOCK'];
+  const _jmPatched=[];
+  const _jmPatchTimers=[];
+  let _jmFirestorePatched=false;
   function wrapOnSnapshot(orig){
     return function(...args){
       return orig.apply(this,args.map(arg=>{
@@ -1616,16 +1938,53 @@ ${mods}
     };
   }
   function patch(){
+    if(_jmFirestorePatched) return true;
     const fb=window.firebase;
     if(!fb||!fb.firestore) return false;
+    let patched=false;
     [fb.firestore.DocumentReference,fb.firestore.Query].forEach(cls=>{
-      if(cls&&cls.prototype&&cls.prototype.onSnapshot)
-        cls.prototype.onSnapshot=wrapOnSnapshot(cls.prototype.onSnapshot);
+      if(cls&&cls.prototype&&cls.prototype.onSnapshot){
+        const original=cls.prototype.onSnapshot;
+        const wrapped=wrapOnSnapshot(original);
+        _jmPatched.push({ prototype:cls.prototype, original, wrapped });
+        cls.prototype.onSnapshot=wrapped;
+        patched=true;
+      }
     });
-    console.log("[AsyncMock] Firestore patched —",_targetField,"=",_targetValue);
-    return true;
+    _jmFirestorePatched=patched;
+    if(patched){
+      _jmPatchTimers.forEach(clearTimeout);
+      console.log("[AsyncMock] Firestore patched —",_targetField,"=",_targetValue);
+    }
+    return patched;
   }
-  if(!patch()){ setTimeout(patch,500); setTimeout(patch,2000); }
+  const _jmFirestoreCleanup=function(options={}){
+    _jmPatchTimers.forEach(clearTimeout);
+    _jmPatched.slice().reverse().forEach(entry=>{
+      if(entry.prototype.onSnapshot===entry.wrapped) entry.prototype.onSnapshot=entry.original;
+    });
+    window.removeEventListener('beforeunload',_jmFirestoreCleanup);
+    if(window.__JediMockCleanup===_jmFirestoreCleanup) window.__JediMockCleanup=_jmPreviousCleanup;
+    _jmAliasNames.forEach(name=>{
+      const api=window[name];
+      if(api&&api.stop===_jmFirestoreCleanup) api.stop=_jmPreviousCleanup;
+    });
+    if(typeof _jmPreviousCleanup==='function') return _jmPreviousCleanup(options);
+    return true;
+  };
+  if(typeof _jmPreviousCleanup==='function'){
+    window.removeEventListener('beforeunload',_jmPreviousCleanup);
+    window.__JediMockCleanup=_jmFirestoreCleanup;
+    _jmAliasNames.forEach(name=>{
+      const api=window[name];
+      if(api&&api.stop===_jmPreviousCleanup) api.stop=_jmFirestoreCleanup;
+    });
+    window.addEventListener('beforeunload',_jmFirestoreCleanup);
+  }
+  if(!patch()){
+    _jmPatchTimers.push(setTimeout(patch,500));
+    _jmPatchTimers.push(setTimeout(patch,2000));
+  }
 })();`;
     }
   }
@@ -1739,20 +2098,26 @@ function showScriptFallback(raw){
   setTimeout(()=>{ const ta=overlay.querySelector('textarea'); if(ta) ta.select(); }, 100);
 }
 
+let _copyFeedbackTimer = null;
+
 function flashCopy(){
   const btn=document.getElementById('copyScriptBtn') || document.querySelector("[onclick='copyScript()']");
   if(!btn) return;
-  const orig=btn.innerHTML;
-  const origBg=btn.style.background;
+  if(!btn.dataset.defaultHtml) btn.dataset.defaultHtml=btn.innerHTML;
+  if(_copyFeedbackTimer!==null) clearTimeout(_copyFeedbackTimer);
   btn.innerHTML='<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 12 4 6"/></svg> Copied!';
-  btn.style.background='var(--green)';
-  btn.style.color='#000';
-  setTimeout(()=>{ btn.innerHTML=orig; btn.style.background=origBg; btn.style.color=''; }, 1800);
+  btn.classList.add('is-copied');
+  showTransientToast('Script copied. Paste it into DevTools Console. Stop it with JediMock.stop() or reload the page.');
+  _copyFeedbackTimer=setTimeout(()=>{
+    btn.innerHTML=btn.dataset.defaultHtml;
+    btn.classList.remove('is-copied');
+    _copyFeedbackTimer=null;
+  }, 1800);
 }
 
 function resetAll(){
   if(!confirm("Reset this tab? This clears the URL, JSON, tree edits, and generated script for the current tab.")) return;
-  tabs[currentTab]={name:"Tab "+(currentTab+1),data:{},changes:[],deletions:[],additions:[],url:"",mode:"fetch",asyncProtocol:"off",rawJson:"",script:"",asyncTriggerMethod:"POST",asyncTriggerUrl:"",asyncResponseMethod:"GET",asyncResponseUrl:"",asyncIdField:"",asyncIdPath:[],asyncCaptureField:"",firestoreField:"",firestoreValue:""};
+  tabs[currentTab]={name:"Tab "+(currentTab+1),data:{},changes:[],deletions:[],additions:[],url:"",matchMethod:"ANY",urlMatchMode:"contains",mode:"fetch",asyncProtocol:"off",responseMode:"replace",rawJson:"",loadedRawJson:"",script:"",asyncTriggerMethod:"POST",asyncTriggerUrl:"",asyncResponseMethod:"GET",asyncResponseUrl:"",asyncIdField:"",asyncIdPath:[],asyncCaptureField:"",firestoreField:"",firestoreValue:""};
   data={};
   changes=[];
   deletions=[];
@@ -1765,10 +2130,18 @@ function resetAll(){
   const _op=document.getElementById("output");
   if(_ji) _ji.value="";
   if(_ui) _ui.value="";
+  const _mm=document.getElementById("matchMethod");
+  const _um=document.getElementById("urlMatchMode");
+  if(_mm) _mm.value="ANY";
+  if(_um) _um.value="contains";
+  toggleMatchSettings(false);
+  updateMatchSummary();
+  updateMatchPreview();
   if(_op) _op.textContent="";
   _scriptUpToDate = false;
   if(tabs[currentTab]) tabs[currentTab].scriptUpToDate = false;
   document.querySelector("input[name=asyncMode][value=off]").checked=true;
+  document.getElementById("responseReplace").checked=true;
   document.getElementById("asyncTriggerMethod").value="POST";
   document.getElementById("asyncTriggerUrl").value="";
   document.getElementById("asyncResponseMethod").value="GET";
@@ -1784,12 +2157,13 @@ function resetAll(){
   if(copyBtn){ copyBtn.style.opacity = ''; copyBtn.title = ''; }
   const btn = document.getElementById('generateBtn');
   if(btn){
-    btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg> Generate Script';
+    btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg> Generate script';
     btn.style.background = '';
     btn.style.color = '';
     btn.style.border = '';
   }
   onModeChange();
+  onResponseModeChange();
   updateChangesBadge();
   updateVisibility();
   renderTabs();
@@ -1849,6 +2223,8 @@ async function shareTab(){
   const btn=document.getElementById("shareBtn");
   const t=tabs[currentTab];
   try{
+    const confirmed=window.confirm("This share link contains the current tab's URLs and JSON. Anyone with the link can read them. Create it?");
+    if(!confirmed) return;
     const json=JSON.stringify({version:1,tab:sanitizeTabState(t, t?.name || "Shared Tab")});
     const hash=await compressToBase64(json);
     const url=location.href.split("#")[0]+"#share="+hash;
@@ -1903,7 +2279,7 @@ async function loadSharedTab(){
     history.replaceState(null,"",location.href.split("#")[0]);
     showTransientToast("Shared tab loaded.");
   }catch(e){
-    console.error("Failed to load shared tab:",e);
+    console.warn("Ignored invalid shared tab:",e);
     history.replaceState(null,"",location.href.split("#")[0]);
     showTransientToast("Could not load that shared tab.", "error");
   }
@@ -4874,11 +5250,13 @@ function _showSaveDot(error){
 
 /* Debounced persist — saves 800ms after last change */
 function persistSession(){
+  if(_loadingState || QA_MODE) return;
   clearTimeout(_persistTimer);
   _persistTimer = setTimeout(_doSave, 1000);
 }
 
 function _doSave(){
+  if(QA_MODE) return;
   try{
     // Flush current DOM state into tabs array before saving
     if(typeof saveState === 'function') saveState();
@@ -4901,6 +5279,7 @@ function _doSave(){
 }
 
 function restoreSession(){
+  if(QA_MODE) return false;
   try{
     const raw = localStorage.getItem(STORAGE_KEY);
     if(!raw) return false;
@@ -4910,6 +5289,16 @@ function restoreSession(){
       sanitizeTabState
     });
     if(!payload) return false;
+
+    // JediMock 1.1.1 briefly allowed the hosted QA iframe to overwrite the
+    // real app session. Remove only that exact known test fixture.
+    const isLeakedQaFixture = payload.tabs.length === 1 &&
+      payload.tabs[0].name === 'Share privacy QA' &&
+      payload.tabs[0].url === '/api/private';
+    if(isLeakedQaFixture){
+      localStorage.removeItem(STORAGE_KEY);
+      return false;
+    }
 
     // Restore theme first (no flash)
     if(payload.theme){
@@ -5002,8 +5391,8 @@ function onFallbackChange(){
   if(wrap) wrap.style.display = cb && cb.checked ? 'flex' : 'none';
   if(sLabel) sLabel.style.display = cb && cb.checked ? 'inline' : 'none';
   if(staticLabel) staticLabel.style.display = cb && cb.checked ? 'none' : 'inline';
+  if(staticLabel) staticLabel.textContent = `${getFallbackTimeout()}s, return mock`;
   if(hint) hint.style.display = (cb && cb.checked && isAsync) ? 'block' : 'none';
-  saveState();
 }
 
 function updateFallbackRowVisibility(){
@@ -5011,7 +5400,9 @@ function updateFallbackRowVisibility(){
   if(!row) return;
   const target = getInterceptTarget();
   const isRequestOnly = target === 'request';
-  row.style.display = isRequestOnly ? 'none' : 'flex';
+  const skipsServer = getResponseMode() === 'replace';
+  const hasResponse = isResponseJsonLoaded();
+  row.style.display = (isRequestOnly || skipsServer || !hasResponse) ? 'none' : 'flex';
 }
 
 function onFallbackChangeAsync(){
@@ -5024,8 +5415,16 @@ function onFallbackChangeAsync(){
   if(wrap2) wrap2.style.display = cb && cb.checked ? 'flex' : 'none';
   if(sLabelA) sLabelA.style.display = cb && cb.checked ? 'inline' : 'none';
   if(staticLabel) staticLabel.style.display = cb && cb.checked ? 'none' : 'inline';
+  if(staticLabel) staticLabel.textContent = `${getFallbackTimeoutAsync()}s, return mock`;
   if(hint) hint.style.display = cb && cb.checked ? 'block' : 'none';
-  saveState();
+}
+
+function onFallbackTimeoutChange(){
+  onFallbackChange();
+}
+
+function onFallbackTimeoutChangeAsync(){
+  onFallbackChangeAsync();
 }
 
 function getFallbackEnabledAsync(){
@@ -5033,7 +5432,7 @@ function getFallbackEnabledAsync(){
 }
 
 function getFallbackTimeoutAsync(){
-  return parseInt(document.getElementById('fallbackTimeoutAsync')?.value || '30', 10);
+  return Math.min(300, Math.max(1, parseInt(document.getElementById('fallbackTimeoutAsync')?.value || '30', 10) || 30));
 }
 
 function getFallbackEnabled(){
@@ -5041,7 +5440,7 @@ function getFallbackEnabled(){
 }
 
 function getFallbackTimeout(){
-  return parseInt(document.getElementById('fallbackTimeout')?.value || '30', 10);
+  return Math.min(300, Math.max(1, parseInt(document.getElementById('fallbackTimeout')?.value || '30', 10) || 30));
 }
 
 function onRulesToggle(){
@@ -5051,6 +5450,8 @@ function onRulesToggle(){
   // Update active badge
   const badge = document.getElementById('rulesActiveBadge');
   if(badge) badge.style.display = rulesEnabled && rules.length > 0 ? 'inline-block' : 'none';
+  const editor = document.getElementById('rulesEditor');
+  if(editor) editor.classList.toggle('hidden', !rulesEnabled);
   // Update card border
   const card = document.getElementById('responseRulesCard');
   if(card) card.style.borderColor = rulesEnabled && rules.length > 0 ? 'rgba(0,212,255,0.4)' : '';
@@ -5059,9 +5460,9 @@ function onRulesToggle(){
 
 function addRule(){
   const type   = document.getElementById('ruleCallType').value;
-  const call   = parseInt(document.getElementById('ruleCallNum').value) || 1;
-  const status = parseInt(document.getElementById('ruleStatus').value) || 200;
-  const delay  = parseInt(document.getElementById('ruleDelay').value) || 0;
+  const call   = Math.min(100000, Math.max(1, parseInt(document.getElementById('ruleCallNum').value) || 1));
+  const status = Math.min(599, Math.max(100, parseInt(document.getElementById('ruleStatus').value) || 200));
+  const delay  = Math.min(300000, Math.max(0, parseInt(document.getElementById('ruleDelay').value) || 0));
   const json   = (document.getElementById('ruleJson').value||'').trim();
 
   // Validate custom JSON if provided
@@ -5084,12 +5485,14 @@ function addRule(){
   document.getElementById('ruleDelay').value = 0;
 
   renderRules();
+  markScriptOutdated();
   persistSession();
 }
 
 function deleteRule(i){
   rules.splice(i, 1);
   renderRules();
+  markScriptOutdated();
   persistSession();
 }
 
@@ -5166,6 +5569,8 @@ function loadRulesFromTab(){
   rulesEnabled = (t && t.rulesEnabled) ? t.rulesEnabled : false;
   const cb = document.getElementById('rulesEnabled');
   if(cb) cb.checked = rulesEnabled;
+  const editor = document.getElementById('rulesEditor');
+  if(editor) editor.classList.toggle('hidden', !rulesEnabled);
   renderRules();
 }
 
@@ -5180,7 +5585,7 @@ function loadRulesFromTab(){
 
 function getResponseMode(){
   const el = document.querySelector('input[name="responseMode"]:checked');
-  return el ? el.value : 'merge';
+  return el ? el.value : 'replace';
 }
 
 function getRequestBodyMode(){
@@ -5194,18 +5599,21 @@ function onResponseModeChange(){
   const replaceHint = document.getElementById('responseReplaceHint');
   const viewerCard  = document.getElementById('viewerCard');
   const label       = document.getElementById('jsonCardLabel');
-  const hasData = data && Object.keys(data).length > 0;
+  const hasData = isResponseJsonLoaded();
 
   // Only show hints after JSON is loaded
   if(mergeHint)   mergeHint.style.display   = (hasData && mode==='merge')   ? 'block' : 'none';
   if(replaceHint) replaceHint.style.display = (hasData && mode==='replace') ? 'block' : 'none';
 
   // In replace mode — no need to edit tree, hide viewer
-  if(viewerCard && data && Object.keys(data).length > 0){
+  if(viewerCard && hasData){
     viewerCard.classList.toggle('hidden', mode==='replace');
   }
-  if(label) label.textContent = mode==='replace' ? 'Response JSON (full replacement)' : 'Response JSON';
+  if(label) label.textContent = mode==='replace' ? '2. Return this JSON' : '2. Modify this real response';
 
+  updateFallbackRowVisibility();
+  updateVisibility();
+  updateAdvancedSetupSummary();
   persistSession();
 }
 
@@ -5230,7 +5638,7 @@ function loadModesFromTab(){
   const t = tabs[currentTab];
 
   // Response mode
-  const resMode = (t && t.responseMode) || 'merge';
+  const resMode = (t && t.responseMode) || 'replace';
   const resEl = document.querySelector(`input[name="responseMode"][value="${resMode}"]`);
   if(resEl) resEl.checked = true;
   onResponseModeChange();
@@ -5256,7 +5664,7 @@ function getInterceptTarget(){
 function onTargetChange(){
   const target = getInterceptTarget();
   const isAsync = document.querySelector('input[name="asyncMode"]:checked')?.value !== 'off';
-  const hasData = data && Object.keys(data).length > 0;
+  const hasData = isResponseJsonLoaded();
   const isRequestOnly = target === 'request';
   const includesResponse = target === 'response' || target === 'both';
   const includesRequest = target === 'request' || target === 'both';
@@ -5269,8 +5677,9 @@ function onTargetChange(){
   // but label and mode toggle reflect the target
   const jsonCardLabel = document.getElementById('jsonCardLabel');
   if(jsonCardLabel){
-    if(isRequestOnly) jsonCardLabel.textContent = 'Response JSON';
-    else jsonCardLabel.textContent = target === 'both' ? 'Response JSON' : 'Response JSON';
+    jsonCardLabel.textContent = getResponseMode()==='replace'
+      ? '2. Return this JSON'
+      : '2. Modify this real response';
   }
 
   // Response mode toggle — only relevant when target includes response
@@ -5290,8 +5699,6 @@ function onTargetChange(){
   }
 
   // JSON card and generate visibility handled by updateVisibility
-  if(jsonCardLabel) jsonCardLabel.textContent = 'Response JSON';
-
   // Show reqViewer when request data is loaded
   const reqViewerCard = document.getElementById('reqViewerCard');
   if(reqViewerCard){
@@ -5301,6 +5708,7 @@ function onTargetChange(){
 
   updateVisibility();
   updateFallbackRowVisibility();
+  updateAdvancedSetupSummary();
   persistSession();
 }
 
@@ -5330,7 +5738,7 @@ function loadTargetFromTab(){
     const ta = document.getElementById('requestBodyInput');
     if(ta) ta.value = t.requestBody;
   }
-  reqData = (t && t.reqData) || {};
+  reqData = t && t.reqData !== undefined ? t.reqData : {};
   reqChanges = (t && t.reqChanges) || [];
   reqDeletions = (t && t.reqDeletions) || [];
   reqAdditions = (t && t.reqAdditions) || [];
@@ -5353,17 +5761,6 @@ function loadTargetFromTab(){
     updateReqChangesBadge();
   }
   onTargetChange();
-  // Restore scriptUpToDate AFTER onTargetChange to prevent it being overridden
-  if(t && t.scriptUpToDate === true && t.script){
-    _loadingState = false;
-    markScriptCurrent();
-  } else if(t && t.scriptUpToDate === false && t.script){
-    _loadingState = false;
-    markScriptOutdated();
-  } else {
-    _loadingState = false;
-    markScriptCurrent();
-  }
 }
 
 /* end intercept target */
@@ -5390,6 +5787,10 @@ function loadReqJson(){
   try {
     reqData = JSON.parse(ta.value);
     reqChanges = []; reqDeletions = []; reqAdditions = [];
+    if(tabs[currentTab]){
+      tabs[currentTab].requestBody = ta.value;
+      tabs[currentTab].reqData = reqData;
+    }
     if(errEl) errEl.style.display = 'none';
     renderReqTree();
     const vc = document.getElementById('reqViewerCard');
@@ -5512,7 +5913,7 @@ function showAddReqForm(obj, path, parent){
 /* end request tree helpers */
 
 function updateReqChangesBadge(){
-  if(reqChanges.length > 0 || reqDeletions.length > 0 || reqAdditions.length > 0) markScriptOutdated();
+  markScriptOutdated();
   const badge = document.getElementById('reqChangesBadge');
   const panel = document.getElementById('reqDiffPanel');
   const list  = document.getElementById('reqDiffList');
@@ -5869,6 +6270,9 @@ function parseCurl(){
       catch(e) { /* not JSON body */ }
     }
 
+    const methodMatch = raw.match(/(?:-X|--request)\s+['"]?([A-Za-z]+)['"]?/i);
+    const curlMethod = normalizeHttpMethod(methodMatch ? methodMatch[1] : (jsonBody ? 'POST' : 'GET'));
+
     // Extract response body from -D or inline JSON in URL (less common)
     // If no body, check if there's a JSON-like string anywhere
     if(!jsonBody){
@@ -5880,7 +6284,11 @@ function parseCurl(){
 
     // Apply URL
     if(urlInput) urlInput.value = path;
+    const matchMethodEl = document.getElementById('matchMethod');
+    if(matchMethodEl) matchMethodEl.value = curlMethod;
     updateTabName();
+    updateMatchSummary();
+    updateMatchPreview();
 
     // Route JSON body based on target mode
     const target = typeof getInterceptTarget === 'function' ? getInterceptTarget() : 'response';
@@ -5934,11 +6342,13 @@ function showCurlError(msg){
 const TEMPLATES_KEY = 'jedimock_templates';
 
 function loadCustomTemplates(){
+  if(QA_MODE) return [];
   try { return JSON.parse(localStorage.getItem(TEMPLATES_KEY) || '[]'); }
   catch(e){ return []; }
 }
 
 function saveCustomTemplates(templates){
+  if(QA_MODE) return;
   try { localStorage.setItem(TEMPLATES_KEY, JSON.stringify(templates)); }
   catch(e){ console.warn('Failed to save templates'); }
 }
@@ -6059,16 +6469,54 @@ function renderCustomTemplates(){
 
 function showOnboarding(){
   const el = document.getElementById('onboardingOverlay');
-  if(el) el.style.display = 'flex';
+  if(el){
+    el.style.display = 'flex';
+    el.setAttribute('aria-hidden', 'false');
+    requestAnimationFrame(()=>el.querySelector('.onboarding-card')?.focus());
+  }
 }
 
 function dismissOnboarding(){
   const el = document.getElementById('onboardingOverlay');
-  if(el) el.style.display = 'none';
-  try { localStorage.setItem('jedimock_onboarded', '1'); } catch(e){}
+  if(el){ el.style.display = 'none'; el.setAttribute('aria-hidden', 'true'); }
+  if(!QA_MODE){
+    try { localStorage.setItem('jedimock_onboarded', '1'); } catch(e){}
+  }
+}
+
+function loadStarterExample(){
+  switchTool('mock');
+
+  const intercept = document.getElementById('asyncOff');
+  const responseTarget = document.getElementById('targetResponse');
+  const replaceMode = document.getElementById('responseReplace');
+  if(intercept) intercept.checked = true;
+  if(responseTarget) responseTarget.checked = true;
+  if(replaceMode) replaceMode.checked = true;
+
+  onModeChange();
+  onResponseModeChange();
+
+  const urlInput = document.getElementById('urlInput');
+  const jsonInput = document.getElementById('jsonInput');
+  if(urlInput) urlInput.value = '/api/users';
+  if(jsonInput){
+    jsonInput.value = JSON.stringify({
+      users: [
+        { id: 1, name: 'Leia', active: true },
+        { id: 2, name: 'Luke', active: true }
+      ]
+    }, null, 2);
+  }
+
+  onUrlMatchInput();
+  loadJson();
+  dismissOnboarding();
+  document.getElementById('genSection')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
 function checkOnboarding(){
+  if(QA_MODE) return;
   try {
     const done = localStorage.getItem('jedimock_onboarded');
     if(!done) showOnboarding();
@@ -6081,12 +6529,16 @@ function checkOnboarding(){
 
 function showShortcuts(){
   const el = document.getElementById('shortcutsOverlay');
-  if(el) el.style.display = 'flex';
+  if(el){
+    el.style.display = 'flex';
+    el.setAttribute('aria-hidden', 'false');
+    requestAnimationFrame(()=>el.querySelector('.shortcuts-card')?.focus());
+  }
 }
 
 function closeShortcuts(){
   const el = document.getElementById('shortcutsOverlay');
-  if(el) el.style.display = 'none';
+  if(el){ el.style.display = 'none'; el.setAttribute('aria-hidden', 'true'); }
 }
 
 /* end new features */
@@ -6219,9 +6671,11 @@ function _jmBuildMeta(t, target, responseMode, rulesEnabled, rules){
     addRow('Response URL', t.asyncResponseUrl||'—', { code: true });
     if(t.fallbackEnabledAsync) addRow('Fallback', `${t.fallbackTimeoutAsync||30}s`, { emphasis: true });
   } else {
-    addRow('URL pattern', t.url||'—', { code: true });
+    const matchLabels = { exact: 'Exact path', contains: 'Contains', pattern: 'Pattern' };
+    addRow('Match', `${t.matchMethod||'ANY'} · ${matchLabels[t.urlMatchMode]||'Contains'}`);
+    addRow('URL', t.url||'—', { code: true });
     addRow('Target', target.charAt(0).toUpperCase()+target.slice(1));
-    if(target !== 'request') addRow('Response', responseMode === 'replace' ? 'Replace entirely' : 'Merge changes');
+    if(target !== 'request') addRow('Response', responseMode === 'replace' ? 'Return this JSON' : 'Modify real response');
     if(target !== 'response') addRow('Request body', 'Modify');
     if(rulesEnabled && rules.length > 0) addRow('Rules', `${rules.length} active`, { emphasis: true });
     addRow('Status', `${t.statusCode||200}${t.responseDelay>0?' · '+t.responseDelay+'ms delay':''}`);
@@ -6236,7 +6690,7 @@ function _jmBuildMeta(t, target, responseMode, rulesEnabled, rules){
 // Restore session or load shared tab
 if(!window.location.hash){
   // Auto-detect OS color scheme on first visit
-  if(!localStorage.getItem('jedimock_v2')){
+  if(!QA_MODE && !localStorage.getItem('jedimock_v2')){
     const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
     if(!prefersDark){
       document.documentElement.setAttribute('data-theme','light');
@@ -6256,6 +6710,12 @@ loadSharedTab();
 
 // Wire up persistence on editor data changes
 document.addEventListener('DOMContentLoaded', ()=>{
+  const skipLink = document.querySelector('.skip-link');
+  const mainContent = document.getElementById('mainContent');
+  if(skipLink && mainContent){
+    skipLink.addEventListener('click', ()=>requestAnimationFrame(()=>mainContent.focus()));
+  }
+
   // Persist on validator input
   const vi = document.getElementById('validInput');
   if(vi) vi.addEventListener('input', persistSession);

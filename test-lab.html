@@ -473,7 +473,13 @@
           <div class="card">
             <h3>Request probes</h3>
             <p>Use these for request or both mode. The backend echoes the parsed body so you can see exactly what was sent.</p>
-            <textarea id="requestPayload">{\n  "order-id": "ord-1",\n  "user name": "Leia",\n  "items": [\n    { "sku": "A1", "qty": 1 }\n  ]\n}</textarea>
+            <textarea id="requestPayload" aria-label="Order request JSON">{
+  "order-id": "ord-1",
+  "user name": "Leia",
+  "items": [
+    { "sku": "A1", "qty": 1 }
+  ]
+}</textarea>
             <div class="btn-row" style="margin-top:10px">
               <button id="btnFetchOrder">fetch POST /api/orders</button>
               <button id="btnXhrOrder">XHR POST /api/orders</button>

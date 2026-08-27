@@ -2,7 +2,9 @@
 
 A browser-based developer & QA toolkit for mocking APIs, editing JSON, validating, beautifying and comparing data — all in one app.
 
-**No npm dependencies · No backend · No install · [jedimock.com](https://jedimock.com)**
+The repository also includes a Chrome/Edge extension in `extension/` with a quick full-response popup and an Advanced setup page for request editing, response merging, rules, fallback, Async ID, Firestore, headers, cURL, sharing, and import/export.
+
+**Version 1.3.6 · No runtime dependencies · No backend · No install · [jedimock.com](https://jedimock.com)**
 
 ---
 
@@ -21,9 +23,10 @@ Intercept fetch and XHR requests in your browser and return custom JSON response
 - **Request** — modify the outgoing request body before it reaches the server
 - **Both** — modify both in one script
 
-**Merge / Replace**
-- **Merge changes** — apply your edits on top of the real data
-- **Replace entirely** — ignore the real data, return/send exactly your JSON
+**Response behavior**
+- **Return this JSON** — the simple default; ignore the real response and immediately return exactly your JSON
+- **Modify real response** — an advanced option; wait for the real JSON response and override selected fields
+- **Fallback mode** — available with Modify real response; return the mock if the real server does not respond within the configured time
 
 **URL matching**
 - Exact string: `/api/users`
@@ -44,7 +47,7 @@ Intercept fetch and XHR requests in your browser and return custom JSON response
 
 **Fallback mode**
 - Available in both Intercept and Async ID modes (per tab)
-- **Intercept fallback** — if the server never responds within the configured timeout, JediMock returns your mock instead. Triggers on timeout and network errors.
+- **Intercept fallback** — in response Merge mode, if the server never responds within the configured timeout, JediMock returns your mock instead. Triggers on timeout and network errors.
 - **Async ID fallback** — if the response URL never fires after the trigger, JediMock constructs the full response URL using the captured ID and returns your mock. Requires the full response URL pattern (the `*` is replaced with the captured ID).
 - Configurable timeout per tab — default 30 seconds
 - Activation log shows `fallback: '30s'` when enabled
@@ -57,10 +60,11 @@ Intercept fetch and XHR requests in your browser and return custom JSON response
 - Clipboard fallback if copy API is blocked
 
 **Other**
-- Wildcard URL matching
+- Optional HTTP method matching — defaults to Any
+- Exact, Contains, and single-segment `*` Pattern URL matching with a live request preview
 - Status code override and response delay
 - cURL import — auto-routes URL and body to the correct field based on target mode
-- Built-in templates: Empty, 401, 403, 404, 500, Timeout, Slow (3s)
+- Built-in templates: Empty, 401, 403, 404, 500, Very slow (30s), Slow (3s)
 - Save your own custom templates
 - Up to 100 tabs, each with independent configuration
 - Import / Export config as JSON
@@ -153,13 +157,14 @@ Lint JSON with accurate line-level error reporting.
 
 ## 🧪 Using the Mock Script
 
-1. Set the URL pattern to intercept (e.g. `/api/users` or `/api/users/*`)
-2. Choose your target — **Response**, **Request**, or **Both**
-3. Paste your JSON and click **Load JSON** (for response) or **Load JSON** in the request body card
-4. Edit fields in the tree if needed — changes are tracked in the diff panel
-5. Set status code, delay, response rules, and fallback mode (optional)
-6. Click **⚡ Generate Script**
-7. Copy the script and paste it into your browser's DevTools console
+1. Set the URL to intercept (e.g. `/api/users`). The default matches any method when the URL contains that value.
+2. Optionally click **Change** to select an HTTP method, Exact/Contains/Pattern matching, and test an example request.
+3. Choose your target — **Response**, **Request**, or **Both**
+4. Paste your JSON and click **Load JSON** (for response) or **Load JSON** in the request body card
+5. Edit fields in the tree if needed — changes are tracked in the diff panel
+6. Set status code, delay, response rules, and fallback mode (optional)
+7. Click **⚡ Generate script**
+8. Copy the script and paste it into your browser's DevTools console
 
 The script intercepts all matching requests automatically. The console logs every interception with `⚡ JediMock intercepted`. Refresh the page to deactivate.
 
@@ -188,6 +193,12 @@ Open [`test-lab.html`](./test-lab.html) to validate generated scripts against a 
 
 ## 📦 Recent Release Notes
 
+- Simplified the main mock workflow into three clearly labeled steps, with advanced setup collapsed by default
+- Added a complete working starter example and made the generate/copy finish more prominent
+- Kept common response scenarios visible while moving less-used and custom scenarios under “More scenarios”
+- Released `1.0.0` after the hosted release candidate passed the complete production browser suite
+- Prepared the `1.0.0-rc.1` release candidate with cache-safe assets, production checks, security headers, privacy guidance, and accessibility improvements
+- Renamed the misleading Timeout preset to Very slow (30s); it returns a delayed response rather than simulating a network failure
 - Fixed fallback script generation so fallback edits apply to the correct mock object
 - Included request-tree edits in generated request-body mocks
 - Hardened share/import/session restore with safer state sanitizing and size limits
